@@ -21,18 +21,70 @@ interface SendFundsModalProps {
 }
 
 const CHAIN_CONFIG = {
-  BTC: { name: "Bitcoin", icon: "₿", color: "bg-orange-500" },
-  ETH: { name: "Ethereum", icon: "Ξ", color: "bg-blue-500" },
-  SOL: { name: "Solana", icon: "◎", color: "bg-purple-500" },
+  ETH: { 
+    name: "Ethereum", 
+    icon: "Ξ", 
+    color: "bg-blue-500",
+    token: "USDC",
+    tokenAddress: "0xA0b86a33E6441b8c4C8C0e4b8b8c4C8C0e4b8b8c4", // USDC on Ethereum
+    decimals: 6,
+    symbol: "USDC"
+  },
+  BTC: { 
+    name: "Bitcoin", 
+    icon: "₿", 
+    color: "bg-orange-500",
+    token: "BTC",
+    tokenAddress: null, // Native BTC
+    decimals: 8,
+    symbol: "BTC"
+  },
+  SOL: { 
+    name: "Solana", 
+    icon: "◎", 
+    color: "bg-purple-500",
+    token: "USDC",
+    tokenAddress: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC on Solana
+    decimals: 6,
+    symbol: "USDC"
+  },
+  POLYGON: { 
+    name: "Polygon", 
+    icon: "⬟", 
+    color: "bg-purple-600",
+    token: "USDC",
+    tokenAddress: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", // USDC on Polygon
+    decimals: 6,
+    symbol: "USDC"
+  },
+  ARBITRUM: { 
+    name: "Arbitrum", 
+    icon: "🔷", 
+    color: "bg-blue-600",
+    token: "USDC",
+    tokenAddress: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", // USDC on Arbitrum
+    decimals: 6,
+    symbol: "USDC"
+  },
+  OPTIMISM: { 
+    name: "Optimism", 
+    icon: "🔴", 
+    color: "bg-red-500",
+    token: "USDC",
+    tokenAddress: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", // USDC on Optimism
+    decimals: 6,
+    symbol: "USDC"
+  },
 }
 
 export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModalProps) {
   const [recipientAddress, setRecipientAddress] = useState("")
-  const [amount, setAmount] = useState("")
-  const [selectedChain, setSelectedChain] = useState("")
+  const [usdAmount, setUsdAmount] = useState("")
+  const [selectedChain, setSelectedChain] = useState("ETH")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [tokenAmount, setTokenAmount] = useState("")
   const { toast } = useToast()
 
   // Load the fixed receipt address from the backend
@@ -54,9 +106,37 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
     }
   }, [isOpen])
 
+  // Calculate token amount when USD amount or chain changes
+  useEffect(() => {
+    if (usdAmount && selectedChain) {
+      const chainConfig = CHAIN_CONFIG[selectedChain as keyof typeof CHAIN_CONFIG]
+      if (chainConfig) {
+        // For USDC, 1 USD = 1 USDC (6 decimals)
+        // For BTC, we'd need to fetch price, but for demo we'll use a fixed rate
+        if (chainConfig.symbol === "USDC") {
+          const tokenAmount = (parseFloat(usdAmount) * Math.pow(10, chainConfig.decimals)).toFixed(0)
+          setTokenAmount(tokenAmount)
+        } else if (chainConfig.symbol === "BTC") {
+          // Assuming 1 BTC = $50,000 for demo (in real app, fetch from API)
+          const btcPrice = 50000
+          const btcAmount = (parseFloat(usdAmount) / btcPrice * Math.pow(10, chainConfig.decimals)).toFixed(0)
+          setTokenAmount(btcAmount)
+        }
+      }
+    } else {
+      setTokenAmount("")
+    }
+  }, [usdAmount, selectedChain])
+
   const handleSend = async () => {
-    if (!amount || !selectedChain) {
-      setError("Please fill in amount and select a chain")
+    if (!usdAmount || !selectedChain) {
+      setError("Please enter USD amount and select a chain")
+      return
+    }
+
+    const chainConfig = CHAIN_CONFIG[selectedChain as keyof typeof CHAIN_CONFIG]
+    if (!chainConfig) {
+      setError("Invalid chain selected")
       return
     }
 
@@ -70,14 +150,15 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
       setSuccess(true)
       toast({
         title: "Transaction Sent",
-        description: `Successfully sent ${amount} ${selectedChain} to ${recipientAddress.slice(0, 6)}...${recipientAddress.slice(-4)}`,
+        description: `Successfully sent $${usdAmount} worth of ${chainConfig.symbol} to the reward address`,
       })
 
       // Reset form after success
       setTimeout(() => {
         setRecipientAddress("")
-        setAmount("")
-        setSelectedChain("")
+        setUsdAmount("")
+        setSelectedChain("ETH")
+        setTokenAmount("")
         setSuccess(false)
         onClose()
       }, 3000)
@@ -99,7 +180,7 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
             Send Funds
           </CardTitle>
           <CardDescription className="apple-text">
-            Send funds from your connected wallet to any address
+            Send USD-denominated tokens from your connected wallet to the reward address
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -142,18 +223,25 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
               {/* Amount and Chain */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-3">
-                  <Label htmlFor="amount" className="text-sm font-medium">Amount</Label>
+                  <Label htmlFor="amount" className="text-sm font-medium">Amount (USD)</Label>
                   <Input
                     id="amount"
                     type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    value={usdAmount}
+                    onChange={(e) => setUsdAmount(e.target.value)}
                     placeholder="0.00"
                     className="apple-input h-12"
+                    min="0"
+                    step="0.01"
                   />
+                  {tokenAmount && selectedChain && (
+                    <div className="text-sm text-muted-foreground">
+                      ≈ {parseFloat(tokenAmount) / Math.pow(10, CHAIN_CONFIG[selectedChain as keyof typeof CHAIN_CONFIG]?.decimals || 6)} {CHAIN_CONFIG[selectedChain as keyof typeof CHAIN_CONFIG]?.symbol}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-3">
-                  <Label htmlFor="chain" className="text-sm font-medium">Currency</Label>
+                  <Label htmlFor="chain" className="text-sm font-medium">Chain & Token</Label>
                   <Select value={selectedChain} onValueChange={setSelectedChain}>
                     <SelectTrigger className="apple-input h-12">
                       <SelectValue placeholder="Select" />
@@ -163,12 +251,17 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
                         <SelectItem key={key} value={key}>
                           <div className="flex items-center gap-2">
                             <span className={`w-3 h-3 rounded-full ${config.color}`} />
-                            {config.icon} {config.name}
+                            {config.icon} {config.name} ({config.symbol})
                           </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {selectedChain && (
+                    <div className="text-sm text-muted-foreground">
+                      Will send {CHAIN_CONFIG[selectedChain as keyof typeof CHAIN_CONFIG]?.symbol} to the reward address
+                    </div>
+                  )}
                 </div>
               </div>
 

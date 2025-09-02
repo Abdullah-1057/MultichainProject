@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Send, ArrowRight, CheckCircle, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { MotokoBackendService } from "@/lib/motoko-backend"
+import { RealBlockchainService } from "@/lib/real-blockchain-service"
 
 interface SendFundsModalProps {
   isOpen: boolean
@@ -129,8 +130,8 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
   }, [usdAmount, selectedChain])
 
   const handleSend = async () => {
-    if (!usdAmount || !selectedChain) {
-      setError("Please enter USD amount and select a chain")
+    if (!usdAmount || !selectedChain || !activeWallet) {
+      setError("Please enter USD amount, select a chain, and ensure wallet is connected")
       return
     }
 
@@ -144,13 +145,77 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
     setError(null)
 
     try {
-      // Simulate sending funds
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Calculate the exact token amount to send
+      const tokenAmountToSend = parseFloat(tokenAmount) / Math.pow(10, chainConfig.decimals)
       
+      // Create transaction request for ICP storage
+      const transactionRequest = {
+        userAddress: activeWallet.address,
+        chain: selectedChain,
+        token: chainConfig.symbol,
+        tokenAddress: chainConfig.tokenAddress,
+        usdAmount: parseFloat(usdAmount),
+        tokenAmount: tokenAmountToSend,
+        recipientAddress: recipientAddress,
+        timestamp: Date.now()
+      }
+
+      // Store transaction request in ICP backend
+      const motokoBackend = MotokoBackendService.getInstance()
+      const depositResponse = await motokoBackend.requestDeposit({
+        userAddress: activeWallet.address,
+        chain: selectedChain,
+        amount: usdAmount,
+        tokenAddress: chainConfig.tokenAddress || "",
+        timestamp: BigInt(Date.now())
+      })
+
+      if (!depositResponse.success) {
+        throw new Error(depositResponse.error || "Failed to create transaction request")
+      }
+
+      // Execute real blockchain transaction based on chain
+      const blockchainService = RealBlockchainService.getInstance()
+      let txResult: { txHash: string; explorerUrl: string }
+      
+      switch (selectedChain) {
+        case "ETH":
+        case "POLYGON":
+        case "ARBITRUM":
+        case "OPTIMISM":
+          txResult = await blockchainService.sendEVMTransaction(
+            activeWallet.address, 
+            recipientAddress, 
+            tokenAmountToSend, 
+            selectedChain,
+            chainConfig.tokenAddress || undefined
+          )
+          break
+        case "BTC":
+          txResult = await blockchainService.sendBitcoinTransaction(
+            activeWallet.address, 
+            recipientAddress, 
+            tokenAmountToSend
+          )
+          break
+        case "SOL":
+          txResult = await blockchainService.sendSolanaTransaction(
+            activeWallet.address, 
+            recipientAddress, 
+            tokenAmountToSend
+          )
+          break
+        default:
+          throw new Error(`Unsupported chain: ${selectedChain}`)
+      }
+
+      // Update transaction status in ICP
+      await motokoBackend.checkStatus(depositResponse.transactionId)
+
       setSuccess(true)
       toast({
-        title: "Transaction Sent",
-        description: `Successfully sent $${usdAmount} worth of ${chainConfig.symbol} to the reward address`,
+        title: "Transaction Sent Successfully!",
+        description: `Sent $${usdAmount} worth of ${chainConfig.symbol}. TX: ${txResult.txHash.slice(0, 8)}...${txResult.txHash.slice(-6)}`,
       })
 
       // Reset form after success
@@ -162,8 +227,14 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
         setSuccess(false)
         onClose()
       }, 3000)
-    } catch (err) {
-      setError("Failed to send transaction")
+    } catch (err: any) {
+      console.error("Transaction failed:", err)
+      setError(err.message || "Failed to send transaction")
+      toast({
+        title: "Transaction Failed",
+        description: err.message || "Please try again",
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }

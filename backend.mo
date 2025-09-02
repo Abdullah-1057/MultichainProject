@@ -1194,8 +1194,15 @@ actor FormManager {
         if (transaction.status != #CONFIRMED) {
           #err("Transaction not confirmed yet");
         } else {
+          // Calculate reward amount (2% of transaction amount, minimum $2)
+          let rewardAmount = if (transaction.amount >= 100) {
+            transaction.amount * 0.02 // 2% for amounts >= $100
+          } else {
+            2.0 // $2 minimum reward
+          };
+          
           // Simulate sending reward to fixed receipt address
-          let rewardTxHash = "reward_" # Nat.toText(Int.abs(Time.now() % 1000000));
+          let rewardTxHash = "reward_" # Nat.toText(Int.abs(Time.now() % 1000000)) # "_" # Float.toText(rewardAmount);
 
           let updatedTransaction = {
             transaction with

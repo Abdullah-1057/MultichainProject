@@ -13,10 +13,11 @@ export const config = createConfig({
       projectId,
       showQrModal: true,
     }),
-    coinbaseWallet({
-      appName: 'FundFlow',
-      appLogoUrl: '/placeholder-logo.png',
-    }),
+                coinbaseWallet({
+              appName: 'FundFlow',
+              appLogoUrl: '/placeholder-logo.png',
+              enableMobileWalletLink: false,
+            }),
   ],
   transports: {
     [mainnet.id]: http(),

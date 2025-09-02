@@ -91,12 +91,13 @@ export function WalletProvider({ children }: WalletProviderProps) {
             showQrModal: true,
           })
           break
-        case 'coinbase':
-          targetConnector = connectors.find(c => c.name === 'Coinbase Wallet') || coinbaseWallet({
-            appName: 'FundFlow',
-            appLogoUrl: '/placeholder-logo.png',
-          })
-          break
+                      case 'coinbase':
+                targetConnector = connectors.find(c => c.name === 'Coinbase Wallet') || coinbaseWallet({
+                  appName: 'FundFlow',
+                  appLogoUrl: '/placeholder-logo.png',
+                  enableMobileWalletLink: false,
+                })
+                break
         case 'oisy':
           // Oisy wallet integration - you'll need to add the specific connector
           targetConnector = connectors.find(c => c.name === 'Oisy') || injected()

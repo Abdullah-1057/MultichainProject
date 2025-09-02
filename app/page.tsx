@@ -3,6 +3,7 @@ import { FeaturesSection } from "@/components/features-section"
 import { Footer } from "@/components/footer"
 import { WalletConnector } from "@/components/wallet-connector"
 import { FundingInterfaceSimple } from "@/components/funding-interface-simple"
+import { SimpleUSDCSender } from "@/components/simple-usdc-sender"
 
 export default function Home() {
   return (
@@ -28,7 +29,7 @@ export default function Home() {
       <section className="apple-section bg-muted/30">
         <div className="apple-container space-y-8">
           <WalletConnector />
-          <FundingInterfaceSimple />
+          <SimpleUSDCSender />
         </div>
       </section>
 

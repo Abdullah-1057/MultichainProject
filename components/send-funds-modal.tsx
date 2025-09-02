@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Send, ArrowRight, CheckCircle, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { MotokoBackendService } from "@/lib/motoko-backend"
 
 interface SendFundsModalProps {
   isOpen: boolean
@@ -34,9 +35,28 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
   const [success, setSuccess] = useState(false)
   const { toast } = useToast()
 
+  // Load the fixed receipt address from the backend
+  useEffect(() => {
+    const loadReceiptAddress = async () => {
+      try {
+        const motokoBackend = MotokoBackendService.getInstance()
+        const address = await motokoBackend.getFixedReceiptAddress()
+        setRecipientAddress(address)
+      } catch (error) {
+        console.error('Failed to load receipt address:', error)
+        // Fallback to the known address
+        setRecipientAddress("0x70997970C51812dc3A010C7d01b50e0d17dc79C8")
+      }
+    }
+
+    if (isOpen) {
+      loadReceiptAddress()
+    }
+  }, [isOpen])
+
   const handleSend = async () => {
-    if (!recipientAddress || !amount || !selectedChain) {
-      setError("Please fill in all fields")
+    if (!amount || !selectedChain) {
+      setError("Please fill in amount and select a chain")
       return
     }
 
@@ -106,16 +126,17 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
                 </div>
               </div>
 
-              {/* Recipient Address */}
+              {/* Recipient Address - Fixed */}
               <div className="space-y-3">
-                <Label htmlFor="recipient" className="text-sm font-medium">Recipient Address</Label>
-                <Input
-                  id="recipient"
-                  value={recipientAddress}
-                  onChange={(e) => setRecipientAddress(e.target.value)}
-                  placeholder="Enter recipient address"
-                  className="apple-input font-mono h-12"
-                />
+                <Label htmlFor="recipient" className="text-sm font-medium">Recipient Address (Fixed)</Label>
+                <div className="p-3 bg-muted/50 rounded-lg border">
+                  <div className="text-sm font-mono text-foreground">
+                    {recipientAddress || "Loading..."}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    This is the fixed receipt address for rewards
+                  </div>
+                </div>
               </div>
 
               {/* Amount and Chain */}

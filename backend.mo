@@ -1004,53 +1004,62 @@ actor FormManager {
     };
   };
 
-  // private func updateStats(transaction : Transaction, oldStatus : ?TransactionStatus) {
-  //   let (total, pending, confirmed, rewardSent, failed, expired, totalReward) = stats;
+  private func updateStats(transaction : Transaction, oldStatus : ?TransactionStatus) {
+    let (total, pending, confirmed, rewardSent, failed, expired, totalReward) = stats;
 
-  //   // Remove old status from stats if it exists
-  //   switch (oldStatus) {
-  //     case (null) {};
-  //     case (?status) {
-  //       switch (status) {
-  //         case (#PENDING) { pending -= 1 };
-  //         case (#CONFIRMED) { confirmed -= 1 };
-  //         case (#REWARD_SENT) {
-  //           rewardSent -= 1;
-  //           totalReward -= REWARD_AMOUNT_USD;
-  //         };
-  //         case (#FAILED) { failed -= 1 };
-  //         case (#EXPIRED) { expired -= 1 };
-  //       };
-  //     };
-  //   };
+    // Calculate new values without mutating the original variables
+    var newTotal = total;
+    var newPending = pending;
+    var newConfirmed = confirmed;
+    var newRewardSent = rewardSent;
+    var newFailed = failed;
+    var newExpired = expired;
+    var newTotalReward = totalReward;
 
-  //   // Add new status to stats
-  //   switch (transaction.status) {
-  //     case (#PENDING) {
-  //       pending += 1;
-  //       if (oldStatus == null) { total += 1 };
-  //     };
-  //     case (#CONFIRMED) {
-  //       confirmed += 1;
-  //       if (oldStatus == null) { total += 1 };
-  //     };
-  //     case (#REWARD_SENT) {
-  //       rewardSent += 1;
-  //       totalReward += REWARD_AMOUNT_USD;
-  //       if (oldStatus == null) { total += 1 };
-  //     };
-  //     case (#FAILED) {
-  //       failed += 1;
-  //       if (oldStatus == null) { total += 1 };
-  //     };
-  //     case (#EXPIRED) {
-  //       expired += 1;
-  //       if (oldStatus == null) { total += 1 };
-  //     };
-  //   };
+    // Remove old status from stats if it exists
+    switch (oldStatus) {
+      case (null) {};
+      case (?status) {
+        switch (status) {
+          case (#PENDING) { newPending -= 1 };
+          case (#CONFIRMED) { newConfirmed -= 1 };
+          case (#REWARD_SENT) {
+            newRewardSent -= 1;
+            newTotalReward -= REWARD_AMOUNT_USD;
+          };
+          case (#FAILED) { newFailed -= 1 };
+          case (#EXPIRED) { newExpired -= 1 };
+        };
+      };
+    };
 
-  //   stats := (total, pending, confirmed, rewardSent, failed, expired, totalReward);
-  // };
+    // Add new status to stats
+    switch (transaction.status) {
+      case (#PENDING) {
+        newPending += 1;
+        if (oldStatus == null) { newTotal += 1 };
+      };
+      case (#CONFIRMED) {
+        newConfirmed += 1;
+        if (oldStatus == null) { newTotal += 1 };
+      };
+      case (#REWARD_SENT) {
+        newRewardSent += 1;
+        newTotalReward += REWARD_AMOUNT_USD;
+        if (oldStatus == null) { newTotal += 1 };
+      };
+      case (#FAILED) {
+        newFailed += 1;
+        if (oldStatus == null) { newTotal += 1 };
+      };
+      case (#EXPIRED) {
+        newExpired += 1;
+        if (oldStatus == null) { newTotal += 1 };
+      };
+    };
+
+    stats := (newTotal, newPending, newConfirmed, newRewardSent, newFailed, newExpired, newTotalReward);
+  };
 
   // Public functions
   public func requestDeposit(request : FundingRequest) : async FundingResponse {
@@ -1081,7 +1090,7 @@ actor FormManager {
       // Store transaction and update user mapping
       transactions.put(transactionId, transaction);
       addUserTransaction(request.userAddress, transactionId);
-      // updateStats(transaction, null);
+      updateStats(transaction, null);
 
       #Success({
         transactionId = transactionId;
@@ -1110,7 +1119,7 @@ actor FormManager {
             transaction with status = #EXPIRED;
           };
           transactions.put(transactionId, expiredTransaction);
-          // updateStats(expiredTransaction, ?transaction.status);
+          updateStats(expiredTransaction, ?transaction.status);
 
           #Success({
             status = #EXPIRED;
@@ -1135,7 +1144,7 @@ actor FormManager {
           };
 
           transactions.put(transactionId, updatedTransaction);
-          // updateStats(updatedTransaction, ?transaction.status);
+          updateStats(updatedTransaction, ?transaction.status);
 
           #Success({
             status = newStatus;
@@ -1196,7 +1205,7 @@ actor FormManager {
           };
 
           transactions.put(transactionId, updatedTransaction);
-          // updateStats(updatedTransaction, ?transaction.status);
+          updateStats(updatedTransaction, ?transaction.status);
 
           Debug.print("Reward of $" # Float.toText(REWARD_AMOUNT_USD) # " sent to " # FIXED_RECEIPT_ADDRESS);
           #ok("Reward sent successfully to " # FIXED_RECEIPT_ADDRESS);
@@ -1242,21 +1251,28 @@ actor FormManager {
     Array.freeze(transactionArray);
   };
 
-  // public func getTransactionsByUser(userAddress : Text) : async [Transaction] {
-  //   // Initialize storage if not already done
-  //   initializeStorage();
+  public func getTransactionsByUser(userAddress : Text) : async [Transaction] {
+    // Initialize storage if not already done
+    initializeStorage();
 
-  //   switch (userTransactions.get(userAddress)) {
-  //     case (null) { [] };
-  //     case (?transactionIds) {
-  //       let userTransactionList = Array.filterMap<TransactionId, Transaction>(
-  //         transactionIds,
-  //         func(id) = transactions.get(id),
-  //       );
-  //       userTransactionList;
-  //     };
-  //   };
-  // };
+    switch (userTransactions.get(userAddress)) {
+      case (null) { [] };
+      case (?transactionIds) {
+        let userTransactionList = Array.filter<Transaction>(
+          Array.map<TransactionId, ?Transaction>(
+            transactionIds,
+            func(id) = transactions.get(id),
+          ),
+          func(optTx) = Option.isSome(optTx),
+        );
+        let userTransactionList = Array.map<?Transaction, Transaction>(
+          userTransactionList,
+          func(optTx) = Option.unwrap(optTx),
+        );
+        userTransactionList;
+      };
+    };
+  };
 
   public func getTransactionStats() : async {
     totalTransactions : Nat;
@@ -1284,6 +1300,11 @@ actor FormManager {
   };
 
   public func getFixedReceiptAddress() : async Text {
+    FIXED_RECEIPT_ADDRESS;
+  };
+
+  // Get the fixed receipt address for the send form
+  public query func getReceiptAddress() : async Text {
     FIXED_RECEIPT_ADDRESS;
   };
 

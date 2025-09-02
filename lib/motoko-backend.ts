@@ -342,7 +342,25 @@ export class MotokoBackendService {
   }
 
   // Get fixed receipt address
-  getFixedReceiptAddress(): string {
+  async getFixedReceiptAddress(): Promise<string> {
+    try {
+      // Try to get from the live canister
+      const response = await fetch('/api/motoko/getReceiptAddress', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return result.address;
+      }
+    } catch (error) {
+      console.error('Error getting receipt address from canister:', error);
+    }
+
+    // Fallback to the known address
     return this.FIXED_RECEIPT_ADDRESS;
   }
 

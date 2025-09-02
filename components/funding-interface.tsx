@@ -13,7 +13,9 @@ import { Copy, ExternalLink, Wallet, CheckCircle, Clock, AlertCircle, Send } fro
 import { useToast } from "@/hooks/use-toast"
 import { useWallet } from "@/contexts/wallet-context"
 import { BlockchainService, BitcoinService, SolanaService } from "@/lib/blockchain-service"
+import { MotokoBackendService, ChainType, Transaction } from "@/lib/motoko-backend"
 import { SendFundsModal } from "./send-funds-modal"
+import { TransactionHistory } from "./transaction-history"
 
 interface DepositRequest {
   depositId: string
@@ -49,62 +51,64 @@ const CHAIN_CONFIG = {
 
 export function FundingInterface() {
   const { isConnected, address, walletName, walletIcon } = useWallet()
-  const [selectedChain, setSelectedChain] = useState<string>("")
+  const [selectedChain, setSelectedChain] = useState<ChainType>("ETH")
+  const [amount, setAmount] = useState("")
   const [depositRequest, setDepositRequest] = useState<DepositRequest | null>(null)
   const [fundingStatus, setFundingStatus] = useState<FundingStatus | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [timeRemaining, setTimeRemaining] = useState<string>("")
   const [showSendModal, setShowSendModal] = useState(false)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const { toast } = useToast()
   
   const blockchainService = BlockchainService.getInstance()
+  const motokoBackend = MotokoBackendService.getInstance()
 
   const generateDepositAddress = async () => {
-    if (!address || !selectedChain) return
+    if (!address || !selectedChain || !amount) {
+      setError("Please fill in all fields")
+      return
+    }
 
     setIsLoading(true)
     setError(null)
 
     try {
-      let depositData: DepositRequest
-
-      if (selectedChain === 'BTC') {
-        const btcAddress = await BitcoinService.generateAddress()
-        depositData = {
-          depositId: `btc-${Date.now()}`,
-          depositAddress: btcAddress,
-          qrData: btcAddress,
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-          chain: 'BTC',
-          minConfirmations: 3
-        }
-      } else if (selectedChain === 'SOL') {
-        const solAddress = await SolanaService.generateAddress()
-        depositData = {
-          depositId: `sol-${Date.now()}`,
-          depositAddress: solAddress,
-          qrData: solAddress,
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-          chain: 'SOL',
-          minConfirmations: 1
-        }
-      } else {
-        // EVM chains
-        depositData = await blockchainService.generateReceivingAddress(selectedChain, address)
-        depositData.depositId = `${selectedChain.toLowerCase()}-${Date.now()}`
-        depositData.chain = selectedChain
-      }
-
-      setDepositRequest(depositData)
-      setFundingStatus({ status: "pending", confirmations: 0 })
-      
-      toast({
-        title: "Deposit Address Generated",
-        description: `Address generated for ${CHAIN_CONFIG[selectedChain as keyof typeof CHAIN_CONFIG].name}`,
+      // Use Motoko backend to create deposit request
+      const response = await motokoBackend.requestDeposit({
+        userAddress: address,
+        chain: selectedChain,
+        amount: parseFloat(amount)
       })
+
+      if (response.success && response.data) {
+        const depositData: DepositRequest = {
+          depositId: response.data.transactionId,
+          depositAddress: response.data.depositAddress,
+          qrData: response.data.qrData,
+          expiresAt: new Date(response.data.expiresAt).toISOString(),
+          chain: selectedChain,
+          minConfirmations: response.data.minConfirmations
+        }
+
+        setDepositRequest(depositData)
+        setFundingStatus({ status: "pending", confirmations: 0 })
+        
+        toast({
+          title: "Deposit Address Generated",
+          description: `Generated ${selectedChain} deposit address. Send $${amount} to receive $2 reward tokens.`,
+        })
+      } else {
+        throw new Error(response.error || "Failed to generate deposit address")
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate deposit address")
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to generate deposit address",
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }
@@ -114,36 +118,55 @@ export function FundingInterface() {
     if (!depositRequest) return
 
     try {
-      let status: FundingStatus
+      // Use Motoko backend to check status
+      const response = await motokoBackend.checkStatus(depositRequest.depositId)
 
-      if (depositRequest.chain === 'BTC') {
-        const btcStatus = await BitcoinService.checkTransaction(depositRequest.depositAddress)
-        status = {
-          status: btcStatus.status,
-          confirmations: btcStatus.confirmations,
-          fundedAmount: btcStatus.amount,
+      if (response.success && response.data) {
+        const status: FundingStatus = {
+          status: response.data.status.toLowerCase() as any,
+          confirmations: response.data.confirmations,
+          fundedAmount: response.data.fundedAmount?.toString(),
+          fundingTxHash: response.data.fundingTxHash,
+          rewardTxHash: response.data.rewardTxHash,
+          explorerUrl: response.data.explorerUrl,
         }
-      } else if (depositRequest.chain === 'SOL') {
-        const solStatus = await SolanaService.checkTransaction(depositRequest.depositAddress)
-        status = {
-          status: solStatus.status,
-          confirmations: solStatus.confirmations,
-          fundedAmount: solStatus.amount,
+
+        setFundingStatus(status)
+
+        // If confirmed, automatically send reward
+        if (response.data.status === 'CONFIRMED') {
+          const rewardResponse = await motokoBackend.sendReward(depositRequest.depositId)
+          if (rewardResponse.success) {
+            toast({
+              title: "Reward Sent!",
+              description: `$${motokoBackend.getRewardAmount()} reward sent to ${motokoBackend.getFixedReceiptAddress()}`,
+            })
+          }
         }
       } else {
-        // EVM chains
-        status = await blockchainService.checkTransactionStatus(
-          depositRequest.chain,
-          depositRequest.depositAddress,
-          depositRequest.minConfirmations
-        )
+        throw new Error(response.error || "Failed to check status")
       }
-
-      setFundingStatus(status)
     } catch (err) {
       console.error("Failed to check status:", err)
     }
-  }, [depositRequest, blockchainService])
+  }, [depositRequest, motokoBackend, toast])
+
+  // Load user transactions
+  const loadUserTransactions = useCallback(async () => {
+    if (!address) return
+    
+    try {
+      const userTransactions = await motokoBackend.getTransactionsByUser(address)
+      setTransactions(userTransactions)
+    } catch (err) {
+      console.error("Failed to load transactions:", err)
+    }
+  }, [address, motokoBackend])
+
+  // Load transactions when address changes
+  useEffect(() => {
+    loadUserTransactions()
+  }, [loadUserTransactions])
 
   // Copy to clipboard
   const copyToClipboard = async (text: string) => {
@@ -197,7 +220,8 @@ export function FundingInterface() {
   const resetForm = () => {
     setDepositRequest(null)
     setFundingStatus(null)
-    setSelectedChain("")
+    setSelectedChain("ETH")
+    setAmount("")
     setError(null)
   }
 
@@ -348,7 +372,7 @@ export function FundingInterface() {
 
             <div className="space-y-3">
               <Label htmlFor="chain" className="text-sm font-medium">Payment Method</Label>
-              <Select value={selectedChain} onValueChange={setSelectedChain}>
+              <Select value={selectedChain} onValueChange={(value) => setSelectedChain(value as ChainType)}>
                 <SelectTrigger className="apple-input h-12">
                   <SelectValue placeholder="Select payment method" />
                 </SelectTrigger>
@@ -365,9 +389,26 @@ export function FundingInterface() {
               </Select>
             </div>
 
+            <div className="space-y-3">
+              <Label htmlFor="amount" className="text-sm font-medium">Amount (USD)</Label>
+              <Input
+                id="amount"
+                type="number"
+                placeholder="Enter amount in USD"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="apple-input h-12"
+                min="0.01"
+                step="0.01"
+              />
+              <p className="text-xs text-muted-foreground">
+                You will receive $2 in reward tokens for each successful transaction
+              </p>
+            </div>
+
             <Button
               onClick={generateDepositAddress}
-              disabled={!address || !selectedChain || isLoading}
+              disabled={!address || !selectedChain || !amount || isLoading}
               className="w-full apple-button py-3 text-base font-medium rounded-lg h-12"
             >
               {isLoading ? "Generating..." : "Generate Deposit Address"}
@@ -513,6 +554,11 @@ export function FundingInterface() {
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {/* Transaction History */}
+      {isConnected && (
+        <TransactionHistory userAddress={address!} />
       )}
 
       {/* Send Funds Modal */}

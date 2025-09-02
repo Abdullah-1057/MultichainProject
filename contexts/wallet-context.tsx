@@ -52,8 +52,11 @@ export function WalletProvider({ children }: WalletProviderProps) {
   // Set wallet info when connected
   useEffect(() => {
     if (isConnected && connector) {
-      setWalletName(connector.name)
-      setWalletIcon(getWalletIcon(connector.name))
+      setWalletName(connector.name || 'Unknown Wallet')
+      setWalletIcon(getWalletIcon(connector.name || ''))
+    } else {
+      setWalletName('')
+      setWalletIcon('')
     }
   }, [isConnected, connector])
 
@@ -84,7 +87,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
           break
         case 'walletconnect':
           targetConnector = connectors.find(c => c.name === 'WalletConnect') || walletConnect({
-            projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'your-project-id',
+            projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'default-project-id',
             showQrModal: true,
           })
           break

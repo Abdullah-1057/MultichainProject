@@ -124,7 +124,11 @@ export class RealBlockchainService {
       }
 
       // Check if we have access to the wallet
-      if (typeof window === 'undefined' || !window.ethereum) {
+      if (typeof window === 'undefined') {
+        throw new Error('This function can only be called in a browser environment.')
+      }
+      
+      if (!window.ethereum) {
         throw new Error('No wallet detected. Please install MetaMask or another Web3 wallet.')
       }
 

@@ -3,7 +3,7 @@ import { mainnet, polygon, arbitrum, optimism, sepolia, base } from 'wagmi/chain
 import { injected, walletConnect, coinbaseWallet } from 'wagmi/connectors'
 
 // Get project ID from environment variables
-const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'your-project-id'
+const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'default-project-id'
 
 export const config = createConfig({
   chains: [mainnet, polygon, arbitrum, optimism, sepolia, base],

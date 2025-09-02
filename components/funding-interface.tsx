@@ -303,8 +303,8 @@ export function FundingInterface() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-2xl apple-heading flex items-center gap-2">
-                  <span className="text-2xl">{walletIcon}</span>
-                  {walletName}
+                  <span className="text-2xl">{walletIcon || '👛'}</span>
+                  {walletName || 'Connected Wallet'}
                 </CardTitle>
                 <CardDescription className="apple-text">
                   Your wallet is connected and ready for funding operations

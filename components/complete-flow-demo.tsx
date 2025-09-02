@@ -89,6 +89,10 @@ export function CompleteFlowDemo() {
     setCurrentStep(0)
 
     try {
+      // Check if we're in a browser environment
+      if (typeof window === 'undefined') {
+        throw new Error('This feature requires a browser environment')
+      }
       // Step 1: Wallet is already connected
       updateStepStatus('connect', 'completed', `Connected: ${walletName}`)
       setCurrentStep(1)
@@ -185,7 +189,7 @@ export function CompleteFlowDemo() {
       case 'error':
         return <AlertCircle className="h-5 w-5 text-red-500" />
       default:
-        return step.icon
+        return step.icon || <Clock className="h-5 w-5" />
     }
   }
 
@@ -209,7 +213,7 @@ export function CompleteFlowDemo() {
       <Card className="apple-card apple-shadow-lg">
         <CardHeader>
           <CardTitle className="text-2xl apple-heading flex items-center gap-2">
-            <span className="text-2xl">{walletIcon}</span>
+            <span className="text-2xl">{walletIcon || '👛'}</span>
             Complete Flow Demo
           </CardTitle>
           <CardDescription className="apple-text">

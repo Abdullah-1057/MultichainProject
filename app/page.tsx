@@ -4,6 +4,7 @@ import { FeaturesSection } from "@/components/features-section"
 import { Footer } from "@/components/footer"
 import { WalletConnector } from "@/components/wallet-connector"
 import { CompleteFlowDemo } from "@/components/complete-flow-demo"
+import { ErrorBoundary } from "@/components/error-boundary"
 
 export default function Home() {
   return (
@@ -28,9 +29,15 @@ export default function Home() {
       {/* Main Content */}
       <section className="apple-section bg-muted/30">
         <div className="apple-container space-y-8">
-          <WalletConnector />
-          <CompleteFlowDemo />
-          <FundingInterface />
+          <ErrorBoundary>
+            <WalletConnector />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <CompleteFlowDemo />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <FundingInterface />
+          </ErrorBoundary>
         </div>
       </section>
 

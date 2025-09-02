@@ -241,8 +241,8 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
       const motokoBackend = MotokoBackendService.getInstance()
       const depositResponse = await motokoBackend.requestDeposit({
         userAddress: activeWallet.address,
-        chain: selectedChain,
-        amount: usdAmount,
+        chain: selectedChain as any, // Type assertion for compatibility
+        amount: parseFloat(usdAmount),
         tokenAddress: chainConfig.tokenAddress || "",
         timestamp: BigInt(Date.now())
       })
@@ -295,7 +295,9 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
       }
 
       // Update transaction status in ICP
-      await motokoBackend.checkStatus(depositResponse.transactionId)
+      if (depositResponse.data?.transactionId) {
+        await motokoBackend.checkStatus(depositResponse.data.transactionId)
+      }
 
       setSuccess(true)
       toast({
@@ -440,7 +442,7 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
                 </Button>
                 <Button
                   onClick={handleSend}
-                  disabled={isLoading || !recipientAddress || !amount || !selectedChain}
+                  disabled={isLoading || !recipientAddress || !usdAmount || !selectedChain}
                   className="flex-1 apple-button h-12"
                 >
                   {isLoading ? (

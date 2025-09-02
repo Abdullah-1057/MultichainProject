@@ -125,7 +125,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     try {
       if (!connector) throw new Error('No wallet connected')
       
-      await connector.switchChain?.(newChainId)
+      await connector.switchChain?.({ chainId: newChainId })
     } catch (err: any) {
       setError(err.message || 'Failed to switch chain')
       throw err

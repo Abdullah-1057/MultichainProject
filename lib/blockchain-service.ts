@@ -83,7 +83,7 @@ export class BlockchainService {
       // Get the balance of the address
       const balance = await client.getBalance({ address: address as `0x${string}` })
       
-      if (balance > 0n) {
+      if (balance > BigInt(0)) {
         // In a real implementation, you would check for actual transactions
         // For now, we'll simulate a confirmed transaction
         return {
@@ -194,7 +194,7 @@ export class BlockchainService {
   }
 
   private getExplorerUrl(chainId: number, txHash: string): string {
-    const explorers = {
+    const explorers: { [key: number]: string } = {
       1: `https://etherscan.io/tx/${txHash}`,
       137: `https://polygonscan.com/tx/${txHash}`,
       42161: `https://arbiscan.io/tx/${txHash}`,

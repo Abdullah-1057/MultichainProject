@@ -109,7 +109,7 @@ export class MotokoBackendService {
     };
     
     const jsonString = JSON.stringify(data);
-    return new TextEncoder().encode(jsonString);
+    return new TextEncoder().encode(jsonString).buffer;
   }
 
   // Simplified Candid decoding (for demo purposes)

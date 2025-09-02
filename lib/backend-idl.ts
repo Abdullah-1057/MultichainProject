@@ -3,7 +3,7 @@
 
 import { IDL } from '@dfinity/candid';
 
-export const idlFactory = ({ IDL }: { IDL: IDL }) => {
+export const idlFactory = ({ IDL }: { IDL: any }) => {
   const ChainType = IDL.Variant({
     'ETH': IDL.Null,
     'BTC': IDL.Null,

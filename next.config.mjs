@@ -2,8 +2,8 @@
 const nextConfig = {
   // Enable experimental features for better error handling
   experimental: {
-    // Enable error overlay in production for debugging
-    errorOverlay: true,
+    // Enable better error handling
+    serverComponentsExternalPackages: ['ethers'],
   },
   
   // Optimize for production

@@ -170,6 +170,10 @@ export class RealBlockchainService {
         // Wait for confirmation
         const receipt = await tx.wait()
         
+        if (!receipt) {
+          throw new Error('Transaction failed - no receipt received')
+        }
+        
         return {
           txHash: receipt.hash,
           explorerUrl: `${chain.blockExplorer}/tx/${receipt.hash}`
@@ -202,6 +206,10 @@ export class RealBlockchainService {
         
         // Wait for confirmation
         const receipt = await tx.wait()
+        
+        if (!receipt) {
+          throw new Error('Transaction failed - no receipt received')
+        }
         
         return {
           txHash: receipt.hash,

@@ -24,6 +24,8 @@ export interface FundingRequest {
   userAddress: string;
   chain: ChainType;
   amount: number;
+  tokenAddress?: string;
+  timestamp?: bigint;
 }
 
 export interface FundingResponse {

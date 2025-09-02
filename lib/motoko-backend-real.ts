@@ -68,7 +68,7 @@ export interface TransactionStats {
 export class MotokoBackendService {
   private static instance: MotokoBackendService;
   private canisterId: string = "y65zg-vaaaa-aaaap-anvnq-cai"; // Your live canister ID
-  private agent: HttpAgent;
+  private agent!: HttpAgent;
   private actor: any;
 
   private constructor() {

@@ -3,6 +3,7 @@ import { Navigation } from "@/components/navigation"
 import { FeaturesSection } from "@/components/features-section"
 import { Footer } from "@/components/footer"
 import { WalletConnector } from "@/components/wallet-connector"
+import { CompleteFlowDemo } from "@/components/complete-flow-demo"
 
 export default function Home() {
   return (
@@ -28,6 +29,7 @@ export default function Home() {
       <section className="apple-section bg-muted/30">
         <div className="apple-container space-y-8">
           <WalletConnector />
+          <CompleteFlowDemo />
           <FundingInterface />
         </div>
       </section>

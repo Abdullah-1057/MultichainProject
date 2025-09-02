@@ -4,28 +4,21 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    // Call your Motoko canister
-    const canisterResponse = await fetch('https://ic0.app/api/v2/canister/y65zg-vaaaa-aaaap-anvnq-cai/call', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/cbor',
-      },
-      body: JSON.stringify({
-        method: 'requestDeposit',
-        args: [{
-          userAddress: body.userAddress,
-          chain: { [body.chain]: null },
-          amount: body.amount,
-        }],
-      }),
-    });
+    // Mock implementation for now - in production this would call your Motoko canister
+    const mockResponse = {
+      success: true,
+      data: {
+        transactionId: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        depositAddress: `0x${Math.random().toString(16).substr(2, 40)}`,
+        qrData: `0x${Math.random().toString(16).substr(2, 40)}`,
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes
+        minConfirmations: body.chain === 'ETH' ? 12 : 6,
+        chain: body.chain,
+        amount: body.amount
+      }
+    };
 
-    if (!canisterResponse.ok) {
-      throw new Error(`Canister error: ${canisterResponse.status}`);
-    }
-
-    const result = await canisterResponse.json();
-    return NextResponse.json(result);
+    return NextResponse.json(mockResponse);
   } catch (error) {
     console.error('Error in requestDeposit API:', error);
     return NextResponse.json(

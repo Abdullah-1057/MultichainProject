@@ -4,24 +4,20 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    // Call your Motoko canister
-    const canisterResponse = await fetch('https://ic0.app/api/v2/canister/y65zg-vaaaa-aaaap-anvnq-cai/call', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/cbor',
-      },
-      body: JSON.stringify({
-        method: 'checkStatus',
-        args: [body.transactionId],
-      }),
-    });
+    // Mock implementation for now - in production this would call your Motoko canister
+    const mockStatus = {
+      success: true,
+      data: {
+        status: 'CONFIRMED',
+        confirmations: 12,
+        fundedAmount: 2.0,
+        fundingTxHash: `0x${Math.random().toString(16).substr(2, 64)}`,
+        rewardTxHash: `0x${Math.random().toString(16).substr(2, 64)}`,
+        explorerUrl: `https://etherscan.io/tx/0x${Math.random().toString(16).substr(2, 64)}`
+      }
+    };
 
-    if (!canisterResponse.ok) {
-      throw new Error(`Canister error: ${canisterResponse.status}`);
-    }
-
-    const result = await canisterResponse.json();
-    return NextResponse.json(result);
+    return NextResponse.json(mockStatus);
   } catch (error) {
     console.error('Error in checkStatus API:', error);
     return NextResponse.json(

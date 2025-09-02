@@ -46,6 +46,7 @@ interface ConnectedWallet {
 const CHAIN_CONFIG = {
   BTC: { name: "Bitcoin", icon: "₿", color: "bg-orange-500", bgColor: "bg-orange-50", borderColor: "border-orange-200" },
   ETH: { name: "Ethereum", icon: "Ξ", color: "bg-blue-500", bgColor: "bg-blue-50", borderColor: "border-blue-200" },
+  BASE: { name: "Base", icon: "🔵", color: "bg-blue-400", bgColor: "bg-blue-50", borderColor: "border-blue-200" },
   SOL: { name: "Solana", icon: "◎", color: "bg-purple-500", bgColor: "bg-purple-50", borderColor: "border-purple-200" },
 }
 

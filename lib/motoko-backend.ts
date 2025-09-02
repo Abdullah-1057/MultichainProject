@@ -16,7 +16,7 @@ export interface Transaction {
   explorerUrl?: string;
 }
 
-export type ChainType = 'ETH' | 'BTC' | 'SOL' | 'POLYGON' | 'ARBITRUM' | 'OPTIMISM';
+export type ChainType = 'ETH' | 'ETH_USDC' | 'BASE' | 'BASE_USDC' | 'BTC' | 'SOL' | 'SOL_USDC' | 'POLYGON' | 'POLYGON_USDC' | 'ARBITRUM' | 'ARBITRUM_USDC' | 'OPTIMISM' | 'OPTIMISM_USDC';
 
 export type TransactionStatus = 'PENDING' | 'CONFIRMED' | 'REWARD_SENT' | 'FAILED' | 'EXPIRED';
 
@@ -373,13 +373,20 @@ export class MotokoBackendService {
   private getDepositAddress(chain: ChainType, userAddress: string): string {
     switch (chain) {
       case 'ETH':
+      case 'ETH_USDC':
+      case 'BASE':
+      case 'BASE_USDC':
       case 'POLYGON':
+      case 'POLYGON_USDC':
       case 'ARBITRUM':
+      case 'ARBITRUM_USDC':
       case 'OPTIMISM':
+      case 'OPTIMISM_USDC':
         return userAddress;
       case 'BTC':
         return `btc_${userAddress}`;
       case 'SOL':
+      case 'SOL_USDC':
         return `sol_${userAddress}`;
       default:
         return userAddress;
@@ -391,10 +398,17 @@ export class MotokoBackendService {
       case 'BTC':
         return 3;
       case 'ETH':
+      case 'ETH_USDC':
+      case 'BASE':
+      case 'BASE_USDC':
       case 'SOL':
+      case 'SOL_USDC':
       case 'POLYGON':
+      case 'POLYGON_USDC':
       case 'ARBITRUM':
+      case 'ARBITRUM_USDC':
       case 'OPTIMISM':
+      case 'OPTIMISM_USDC':
         return 1;
       default:
         return 1;
@@ -404,16 +418,24 @@ export class MotokoBackendService {
   private getExplorerUrl(chain: ChainType, txHash: string): string {
     switch (chain) {
       case 'ETH':
+      case 'ETH_USDC':
         return `https://etherscan.io/tx/${txHash}`;
+      case 'BASE':
+      case 'BASE_USDC':
+        return `https://basescan.org/tx/${txHash}`;
       case 'BTC':
         return `https://www.blockchain.com/btc/tx/${txHash}`;
       case 'SOL':
+      case 'SOL_USDC':
         return `https://solscan.io/tx/${txHash}`;
       case 'POLYGON':
+      case 'POLYGON_USDC':
         return `https://polygonscan.com/tx/${txHash}`;
       case 'ARBITRUM':
+      case 'ARBITRUM_USDC':
         return `https://arbiscan.io/tx/${txHash}`;
       case 'OPTIMISM':
+      case 'OPTIMISM_USDC':
         return `https://optimistic.etherscan.io/tx/${txHash}`;
       default:
         return '';

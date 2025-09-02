@@ -26,8 +26,35 @@ const CHAIN_CONFIG = {
     name: "Ethereum", 
     icon: "Ξ", 
     color: "bg-blue-500",
+    token: "ETH",
+    tokenAddress: null, // Native ETH
+    decimals: 18,
+    symbol: "ETH"
+  },
+  ETH_USDC: { 
+    name: "Ethereum (USDC)", 
+    icon: "Ξ", 
+    color: "bg-blue-500",
     token: "USDC",
     tokenAddress: "0xA0b86a33E6441b8c4C8C0e4b8b8c4C8C0e4b8b8c4", // USDC on Ethereum
+    decimals: 6,
+    symbol: "USDC"
+  },
+  BASE: { 
+    name: "Base", 
+    icon: "🔵", 
+    color: "bg-blue-400",
+    token: "ETH",
+    tokenAddress: null, // Native ETH on Base
+    decimals: 18,
+    symbol: "ETH"
+  },
+  BASE_USDC: { 
+    name: "Base (USDC)", 
+    icon: "🔵", 
+    color: "bg-blue-400",
+    token: "USDC",
+    tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
     decimals: 6,
     symbol: "USDC"
   },
@@ -44,6 +71,15 @@ const CHAIN_CONFIG = {
     name: "Solana", 
     icon: "◎", 
     color: "bg-purple-500",
+    token: "SOL",
+    tokenAddress: null, // Native SOL
+    decimals: 9,
+    symbol: "SOL"
+  },
+  SOL_USDC: { 
+    name: "Solana (USDC)", 
+    icon: "◎", 
+    color: "bg-purple-500",
     token: "USDC",
     tokenAddress: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC on Solana
     decimals: 6,
@@ -51,6 +87,15 @@ const CHAIN_CONFIG = {
   },
   POLYGON: { 
     name: "Polygon", 
+    icon: "⬟", 
+    color: "bg-purple-600",
+    token: "MATIC",
+    tokenAddress: null, // Native MATIC
+    decimals: 18,
+    symbol: "MATIC"
+  },
+  POLYGON_USDC: { 
+    name: "Polygon (USDC)", 
     icon: "⬟", 
     color: "bg-purple-600",
     token: "USDC",
@@ -62,6 +107,15 @@ const CHAIN_CONFIG = {
     name: "Arbitrum", 
     icon: "🔷", 
     color: "bg-blue-600",
+    token: "ETH",
+    tokenAddress: null, // Native ETH on Arbitrum
+    decimals: 18,
+    symbol: "ETH"
+  },
+  ARBITRUM_USDC: { 
+    name: "Arbitrum (USDC)", 
+    icon: "🔷", 
+    color: "bg-blue-600",
     token: "USDC",
     tokenAddress: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", // USDC on Arbitrum
     decimals: 6,
@@ -69,6 +123,15 @@ const CHAIN_CONFIG = {
   },
   OPTIMISM: { 
     name: "Optimism", 
+    icon: "🔴", 
+    color: "bg-red-500",
+    token: "ETH",
+    tokenAddress: null, // Native ETH on Optimism
+    decimals: 18,
+    symbol: "ETH"
+  },
+  OPTIMISM_USDC: { 
+    name: "Optimism (USDC)", 
     icon: "🔴", 
     color: "bg-red-500",
     token: "USDC",
@@ -113,12 +176,26 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
       const chainConfig = CHAIN_CONFIG[selectedChain as keyof typeof CHAIN_CONFIG]
       if (chainConfig) {
         // For USDC, 1 USD = 1 USDC (6 decimals)
-        // For BTC, we'd need to fetch price, but for demo we'll use a fixed rate
         if (chainConfig.symbol === "USDC") {
           const tokenAmount = (parseFloat(usdAmount) * Math.pow(10, chainConfig.decimals)).toFixed(0)
           setTokenAmount(tokenAmount)
+        } else if (chainConfig.symbol === "ETH") {
+          // Assuming 1 ETH = $2,000 for demo (in real app, fetch from API)
+          const ethPrice = 2000
+          const ethAmount = (parseFloat(usdAmount) / ethPrice * Math.pow(10, chainConfig.decimals)).toFixed(0)
+          setTokenAmount(ethAmount)
+        } else if (chainConfig.symbol === "MATIC") {
+          // Assuming 1 MATIC = $0.5 for demo
+          const maticPrice = 0.5
+          const maticAmount = (parseFloat(usdAmount) / maticPrice * Math.pow(10, chainConfig.decimals)).toFixed(0)
+          setTokenAmount(maticAmount)
+        } else if (chainConfig.symbol === "SOL") {
+          // Assuming 1 SOL = $100 for demo
+          const solPrice = 100
+          const solAmount = (parseFloat(usdAmount) / solPrice * Math.pow(10, chainConfig.decimals)).toFixed(0)
+          setTokenAmount(solAmount)
         } else if (chainConfig.symbol === "BTC") {
-          // Assuming 1 BTC = $50,000 for demo (in real app, fetch from API)
+          // Assuming 1 BTC = $50,000 for demo
           const btcPrice = 50000
           const btcAmount = (parseFloat(usdAmount) / btcPrice * Math.pow(10, chainConfig.decimals)).toFixed(0)
           setTokenAmount(btcAmount)
@@ -180,14 +257,22 @@ export function SendFundsModal({ isOpen, onClose, activeWallet }: SendFundsModal
       
       switch (selectedChain) {
         case "ETH":
+        case "ETH_USDC":
+        case "BASE":
+        case "BASE_USDC":
         case "POLYGON":
+        case "POLYGON_USDC":
         case "ARBITRUM":
+        case "ARBITRUM_USDC":
         case "OPTIMISM":
+        case "OPTIMISM_USDC":
+          // Extract the base chain name for EVM transactions
+          const baseChainName = selectedChain.replace('_USDC', '').replace('_USDC', '')
           txResult = await blockchainService.sendEVMTransaction(
             activeWallet.address, 
             recipientAddress, 
             tokenAmountToSend, 
-            selectedChain,
+            baseChainName,
             chainConfig.tokenAddress || undefined
           )
           break

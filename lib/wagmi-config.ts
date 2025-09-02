@@ -1,12 +1,12 @@
 import { createConfig, http } from 'wagmi'
-import { mainnet, polygon, arbitrum, optimism, sepolia } from 'wagmi/chains'
+import { mainnet, polygon, arbitrum, optimism, sepolia, base } from 'wagmi/chains'
 import { injected, walletConnect, coinbaseWallet } from 'wagmi/connectors'
 
 // Get project ID from environment variables
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'your-project-id'
 
 export const config = createConfig({
-  chains: [mainnet, polygon, arbitrum, optimism, sepolia],
+  chains: [mainnet, polygon, arbitrum, optimism, sepolia, base],
   connectors: [
     injected(),
     walletConnect({
@@ -24,8 +24,9 @@ export const config = createConfig({
     [arbitrum.id]: http(),
     [optimism.id]: http(),
     [sepolia.id]: http(),
+    [base.id]: http(),
   },
 })
 
-export const chains = [mainnet, polygon, arbitrum, optimism, sepolia]
+export const chains = [mainnet, polygon, arbitrum, optimism, sepolia, base]
 

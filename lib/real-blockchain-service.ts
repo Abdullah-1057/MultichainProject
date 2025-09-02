@@ -49,6 +49,14 @@ export class RealBlockchainService {
       usdcAddress: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
       decimals: 6,
       blockExplorer: 'https://optimistic.etherscan.io'
+    },
+    BASE: {
+      name: 'Base',
+      chainId: 8453,
+      rpcUrl: 'https://base.llamarpc.com',
+      usdcAddress: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      decimals: 6,
+      blockExplorer: 'https://basescan.org'
     }
   }
 
@@ -101,7 +109,7 @@ export class RealBlockchainService {
     return this.providers.get(chainName)!
   }
 
-  // Send EVM transaction (Ethereum, Polygon, Arbitrum, Optimism)
+  // Send EVM transaction (Ethereum, Polygon, Arbitrum, Optimism, Base)
   async sendEVMTransaction(
     fromAddress: string,
     toAddress: string,
@@ -115,39 +123,86 @@ export class RealBlockchainService {
         throw new Error(`Unsupported EVM chain: ${chainName}`)
       }
 
-      const provider = this.getProvider(chainName)
+      // Check if we have access to the wallet
+      if (typeof window === 'undefined' || !window.ethereum) {
+        throw new Error('No wallet detected. Please install MetaMask or another Web3 wallet.')
+      }
+
+      // Create provider from window.ethereum
+      const provider = new ethers.BrowserProvider(window.ethereum)
       
       // Get the signer (this will prompt the user to sign)
-      const signer = await provider.getSigner(fromAddress)
+      const signer = await provider.getSigner()
       
-      // Create USDC contract instance
-      const usdcContract = new ethers.Contract(chain.usdcAddress, this.USDC_ABI, signer)
-      
-      // Convert amount to wei (considering USDC has 6 decimals)
-      const amountInWei = ethers.parseUnits(amount.toString(), chain.decimals)
-      
-      // Check balance
-      const balance = await usdcContract.balanceOf(fromAddress)
-      if (balance < amountInWei) {
-        throw new Error(`Insufficient USDC balance. Required: ${amount} USDC, Available: ${ethers.formatUnits(balance, chain.decimals)} USDC`)
+      // Verify the signer address matches the fromAddress
+      const signerAddress = await signer.getAddress()
+      if (signerAddress.toLowerCase() !== fromAddress.toLowerCase()) {
+        throw new Error(`Wallet address mismatch. Expected: ${fromAddress}, Got: ${signerAddress}`)
       }
       
-      // Estimate gas
-      const gasEstimate = await usdcContract.transfer.estimateGas(toAddress, amountInWei)
-      const gasPrice = await provider.getFeeData()
-      
-      // Send transaction
-      const tx = await usdcContract.transfer(toAddress, amountInWei, {
-        gasLimit: gasEstimate,
-        gasPrice: gasPrice.gasPrice
-      })
-      
-      // Wait for confirmation
-      const receipt = await tx.wait()
-      
-      return {
-        txHash: receipt.hash,
-        explorerUrl: `${chain.blockExplorer}/tx/${receipt.hash}`
+      if (tokenAddress) {
+        // ERC-20 token transaction (USDC, etc.)
+        const tokenContract = new ethers.Contract(tokenAddress, this.USDC_ABI, signer)
+        
+        // Convert amount to wei (considering token decimals)
+        const amountInWei = ethers.parseUnits(amount.toString(), chain.decimals)
+        
+        // Check balance
+        const balance = await tokenContract.balanceOf(fromAddress)
+        if (balance < amountInWei) {
+          throw new Error(`Insufficient token balance. Required: ${amount}, Available: ${ethers.formatUnits(balance, chain.decimals)}`)
+        }
+        
+        // Estimate gas
+        const gasEstimate = await tokenContract.transfer.estimateGas(toAddress, amountInWei)
+        const feeData = await provider.getFeeData()
+        
+        // Send transaction
+        const tx = await tokenContract.transfer(toAddress, amountInWei, {
+          gasLimit: gasEstimate,
+          gasPrice: feeData.gasPrice
+        })
+        
+        // Wait for confirmation
+        const receipt = await tx.wait()
+        
+        return {
+          txHash: receipt.hash,
+          explorerUrl: `${chain.blockExplorer}/tx/${receipt.hash}`
+        }
+      } else {
+        // Native ETH transaction
+        const amountInWei = ethers.parseEther(amount.toString())
+        
+        // Check ETH balance
+        const balance = await provider.getBalance(fromAddress)
+        if (balance < amountInWei) {
+          throw new Error(`Insufficient ETH balance. Required: ${amount} ETH, Available: ${ethers.formatEther(balance)} ETH`)
+        }
+        
+        // Estimate gas for ETH transfer
+        const gasEstimate = await provider.estimateGas({
+          to: toAddress,
+          value: amountInWei
+        })
+        
+        const feeData = await provider.getFeeData()
+        
+        // Send ETH transaction
+        const tx = await signer.sendTransaction({
+          to: toAddress,
+          value: amountInWei,
+          gasLimit: gasEstimate,
+          gasPrice: feeData.gasPrice
+        })
+        
+        // Wait for confirmation
+        const receipt = await tx.wait()
+        
+        return {
+          txHash: receipt.hash,
+          explorerUrl: `${chain.blockExplorer}/tx/${receipt.hash}`
+        }
       }
     } catch (error: any) {
       console.error('EVM transaction failed:', error)
@@ -309,6 +364,7 @@ export class RealBlockchainService {
         case 'POLYGON':
         case 'ARBITRUM':
         case 'OPTIMISM':
+        case 'BASE':
           return ethers.isAddress(address)
         case 'SOL':
           new PublicKey(address) // This will throw if invalid

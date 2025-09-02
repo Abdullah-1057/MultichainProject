@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi'
 import { injected, walletConnect, coinbaseWallet } from 'wagmi/connectors'
-import { mainnet, polygon, arbitrum, optimism } from 'wagmi/chains'
+import { mainnet, polygon, arbitrum, optimism, base } from 'wagmi/chains'
 
 interface WalletContextType {
   // Connection state

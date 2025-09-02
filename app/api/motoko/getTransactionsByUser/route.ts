@@ -4,24 +4,33 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    // Call your Motoko canister
-    const canisterResponse = await fetch('https://ic0.app/api/v2/canister/y65zg-vaaaa-aaaap-anvnq-cai/call', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/cbor',
+    // Mock implementation for now - in production this would call your Motoko canister
+    const mockTransactions = [
+      {
+        id: `tx_${Date.now()}_1`,
+        userAddress: body.userAddress,
+        chain: 'ETH',
+        amount: 2.0,
+        status: 'confirmed',
+        timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 minutes ago
+        txHash: `0x${Math.random().toString(16).substr(2, 64)}`,
+        rewardAmount: 2.0,
+        rewardTxHash: `0x${Math.random().toString(16).substr(2, 64)}`
       },
-      body: JSON.stringify({
-        method: 'getTransactionsByUser',
-        args: [body.userAddress],
-      }),
-    });
+      {
+        id: `tx_${Date.now()}_2`,
+        userAddress: body.userAddress,
+        chain: 'BASE',
+        amount: 5.0,
+        status: 'pending',
+        timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(), // 5 minutes ago
+        txHash: `0x${Math.random().toString(16).substr(2, 64)}`,
+        rewardAmount: 2.0,
+        rewardTxHash: null
+      }
+    ];
 
-    if (!canisterResponse.ok) {
-      throw new Error(`Canister error: ${canisterResponse.status}`);
-    }
-
-    const result = await canisterResponse.json();
-    return NextResponse.json(result);
+    return NextResponse.json(mockTransactions);
   } catch (error) {
     console.error('Error in getTransactionsByUser API:', error);
     return NextResponse.json(

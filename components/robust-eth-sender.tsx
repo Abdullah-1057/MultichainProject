@@ -119,8 +119,14 @@ export function RobustETHSender() {
       console.log('Gas price:', gasPrice)
       console.log('Gas estimate:', gasEstimate)
 
-      // Add 20% buffer to gas estimate
-      const gasLimit = '0x' + (parseInt(gasEstimate, 16) * 1.2).toString(16)
+      // Add 20% buffer to gas estimate and ensure it's a valid hex string
+      const gasEstimateInt = parseInt(gasEstimate, 16)
+      const gasLimitInt = Math.floor(gasEstimateInt * 1.2)
+      const gasLimit = '0x' + gasLimitInt.toString(16)
+      
+      console.log('Gas estimate int:', gasEstimateInt)
+      console.log('Gas limit int:', gasLimitInt)
+      console.log('Gas limit hex:', gasLimit)
 
       // Send transaction with proper gas parameters
       const txHash = await window.ethereum.request({

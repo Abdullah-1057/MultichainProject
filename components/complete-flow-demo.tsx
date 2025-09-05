@@ -10,7 +10,7 @@ import { CheckCircle, Clock, AlertCircle, Wallet, Send, Database, Trophy } from 
 import { useWallet } from "@/contexts/wallet-context"
 import { useToast } from "@/hooks/use-toast"
 import { RealBlockchainService } from "@/lib/real-blockchain-service"
-import { MotokoBackendService } from "@/lib/motoko-backend"
+import { MotokoBackendService } from "@/lib/motoko-backend-real"
 
 interface FlowStep {
   id: string

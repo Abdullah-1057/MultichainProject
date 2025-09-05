@@ -12,6 +12,7 @@ import { CheckCircle, Copy, DollarSign, Link2, Loader2, ScanLine, Shield, Wallet
 import { MotokoBackendService } from '@/lib/motoko-backend-real';
 import { SolanaWalletManager } from '@/lib/solana-wallet';
 import { BitcoinWalletManager } from '@/lib/bitcoin-wallet';
+import MyTokensSection from './my-tokens-section';
 
 type ChainOption = 'ETH' | 'SOL' | 'BTC';
 
@@ -393,6 +394,9 @@ export default function BuyTokens() {
             )}
           </CardContent>
         </Card>
+
+        {/* My Tokens Section */}
+        <MyTokensSection userAddress={connected?.address} />
 
         {/* Footer / Admin Link */}
         <div className="text-center">

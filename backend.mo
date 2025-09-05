@@ -1221,13 +1221,13 @@ actor FormManager {
     };
   };
 
-  public func getTransaction(transactionId : TransactionId) : async ?Transaction {
+  public query func getTransaction(transactionId : TransactionId) : async ?Transaction {
     // Initialize storage if not already done
     initializeStorage();
     return transactions.get(transactionId);
   };
 
-  public func getAllTransactions() : async [Transaction] {
+  public query func getAllTransactions() : async [Transaction] {
     // Initialize storage if not already done
     initializeStorage();
 
@@ -1258,7 +1258,7 @@ actor FormManager {
     Array.freeze(transactionArray);
   };
 
-  public func getTransactionsByUser(userAddress : Text) : async [Transaction] {
+  public query func getTransactionsByUser(userAddress : Text) : async [Transaction] {
     // Initialize storage if not already done
     initializeStorage();
 

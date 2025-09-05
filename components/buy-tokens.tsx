@@ -13,7 +13,7 @@ import { MotokoBackendService } from '@/lib/motoko-backend-real';
 import { SolanaWalletManager } from '@/lib/solana-wallet';
 import { BitcoinWalletManager } from '@/lib/bitcoin-wallet';
 import MyTokensSection from './my-tokens-section';
-import HourlyPayment from './hourly-payment';
+// import HourlyPayment from './hourly-payment';
 
 type ChainOption = 'ETH' | 'SOL' | 'BTC';
 
@@ -406,11 +406,11 @@ export default function BuyTokens() {
           </CardContent>
         </Card>
 
-        {/* Hourly Rotating Payment Section */}
-        <HourlyPayment onPaymentComplete={(txHash) => {
+        {/* Hourly Rotating Payment Section - Temporarily disabled */}
+        {/* <HourlyPayment onPaymentComplete={(txHash) => {
           console.log('Payment completed:', txHash);
           // You can add additional logic here, like showing a success message
-        }} />
+        }} /> */}
 
         {/* My Tokens Section */}
         <MyTokensSection userAddress={connected?.address} />

@@ -8,8 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, Copy, Clock, Wallet, Send, Loader2 } from 'lucide-react';
-import QRCode from 'qrcode.react';
-import { formatDistanceToNow } from 'date-fns';
+// import QRCode from 'qrcode.react';
 import { ethers } from 'ethers';
 
 // Contract addresses - UPDATE THESE AFTER DEPLOYMENT
@@ -81,7 +80,7 @@ export default function HourlyPayment({ onPaymentComplete }: HourlyPaymentProps)
         console.log('Creating forwarder, tx hash:', tx.hash);
         const receipt = await tx.wait();
 
-        if (receipt.status !== 1) {
+        if (!receipt || receipt.status !== 1) {
           throw new Error('Transaction failed');
         }
 
@@ -117,7 +116,7 @@ export default function HourlyPayment({ onPaymentComplete }: HourlyPaymentProps)
     const nextHour = new Date(now);
     nextHour.setUTCHours(now.getUTCHours() + 1, 0, 0, 0);
 
-    return Math.max(0, Math.floor((nextHour - now) / 1000));
+    return Math.max(0, Math.floor((nextHour.getTime() - now.getTime()) / 1000));
   };
 
   // Connect user wallet
@@ -188,7 +187,7 @@ export default function HourlyPayment({ onPaymentComplete }: HourlyPaymentProps)
       // Wait for confirmation
       const receipt = await tx.wait();
 
-      if (receipt.status !== 1) {
+      if (!receipt || receipt.status !== 1) {
         throw new Error('Transaction failed');
       }
 
@@ -317,12 +316,12 @@ export default function HourlyPayment({ onPaymentComplete }: HourlyPaymentProps)
                   </div>
                 </div>
 
-                {/* QR Code */}
+                {/* QR Code - Temporarily disabled */}
                 <div className="text-center">
-                  <div className="bg-white p-4 rounded-lg inline-block">
-                    <QRCode value={currentDepositAddress} size={200} />
+                  <div className="bg-slate-600 p-8 rounded-lg inline-block">
+                    <p className="text-slate-300 text-sm">QR Code temporarily disabled</p>
+                    <p className="text-slate-400 text-xs mt-1">Copy address above to send payment</p>
                   </div>
-                  <p className="text-xs text-slate-400 mt-2">Scan to send payment</p>
                 </div>
 
                 {/* Payment Amount Input */}

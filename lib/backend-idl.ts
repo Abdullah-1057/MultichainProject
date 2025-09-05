@@ -19,6 +19,7 @@ export const idlFactory = ({ IDL }: { IDL: any }) => {
     'REWARD_SENT': IDL.Null,
     'FAILED': IDL.Null,
     'EXPIRED': IDL.Null,
+    'PAID': IDL.Null,
   });
 
   const Transaction = IDL.Record({
@@ -93,6 +94,7 @@ export const idlFactory = ({ IDL }: { IDL: any }) => {
     'getFixedReceiptAddress': IDL.Func([], [IDL.Text], ['query']),
     'getRewardAmount': IDL.Func([], [IDL.Float64], ['query']),
     'getStorageStatus': IDL.Func([], [StorageStatus], ['query']),
+    'markAsPaid': IDL.Func([IDL.Text], [IDL.Variant({ 'ok': IDL.Text, 'err': IDL.Text })], []),
     'clearExpiredTransactions': IDL.Func([], [IDL.Nat], []),
     'resetAllTransactions': IDL.Func([], [], []),
     'saveToStableMemory': IDL.Func([], [], []),

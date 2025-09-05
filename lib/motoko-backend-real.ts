@@ -277,7 +277,11 @@ export class MotokoBackendService {
       }
 
       const result = await this.actor.getAllTransactions();
-      const onChain = result.map((tx: any) => this.mapMotokoTransaction(tx));
+      console.log('Raw backend result:', result);
+      const onChain = result.map((tx: any) => {
+        console.log('Mapping transaction:', tx);
+        return this.mapMotokoTransaction(tx);
+      });
       const local = Array.from(this.placeholders.values());
       // Merge (placeholders first so admins see pending entries even if canister later succeeds)
       return [...local, ...onChain];
@@ -295,8 +299,40 @@ export class MotokoBackendService {
         throw new Error('Canister not initialized');
       }
 
-      const result = await this.actor.getTransactionsByUser(userAddress);
-      return result.map((tx: any) => this.mapMotokoTransaction(tx));
+      console.log('Getting transactions for user:', userAddress);
+      
+      // Try getTransactionsByUser first
+      try {
+        const result = await this.actor.getTransactionsByUser(userAddress);
+        console.log('Raw user transactions result:', result);
+        
+        // Handle case where result might be empty or in unexpected format
+        if (!result || !Array.isArray(result)) {
+          console.log('No transactions found or invalid format');
+          return [];
+        }
+        
+        const mapped = result.map((tx: any) => {
+          console.log('Mapping user transaction:', tx);
+          return this.mapMotokoTransaction(tx);
+        });
+        console.log('Mapped user transactions:', mapped);
+        return mapped;
+      } catch (queryError) {
+        console.warn('getTransactionsByUser failed, falling back to getAllTransactions:', queryError);
+        
+        // Fallback: Get all transactions and filter by user
+        const allTransactions = await this.actor.getAllTransactions();
+        console.log('All transactions for filtering:', allTransactions);
+        
+        const userTransactions = allTransactions.filter((tx: any) => {
+          const mappedTx = this.mapMotokoTransaction(tx);
+          return mappedTx.userAddress.toLowerCase() === userAddress.toLowerCase();
+        });
+        
+        console.log('Filtered user transactions:', userTransactions);
+        return userTransactions;
+      }
     } catch (error) {
       console.error('Error getting user transactions:', error);
       return [];
@@ -369,7 +405,19 @@ export class MotokoBackendService {
         throw new Error('Canister not initialized');
       }
 
+      console.log('Attempting to mark transaction as paid:', transactionId);
+      
+      // Check if markAsPaid function exists
+      if (typeof this.actor.markAsPaid !== 'function') {
+        console.warn('markAsPaid function not available in canister');
+        return { 
+          success: false, 
+          error: 'Mark as paid function not available. Please redeploy the canister.' 
+        };
+      }
+
       const result = await this.actor.markAsPaid(transactionId);
+      console.log('Mark as paid result:', result);
       
       if (result.ok) {
         return { success: true };
@@ -398,30 +446,68 @@ export class MotokoBackendService {
 
   // Helper function to map Motoko chain to TypeScript chain
   private mapMotokoChain(motokoChain: any): ChainType {
+    console.log('Mapping chain:', motokoChain);
+    
+    if (!motokoChain) return 'ETH';
+    
+    // Handle different data formats
+    if (typeof motokoChain === 'string') {
+      return motokoChain as ChainType;
+    }
+    
     if (motokoChain.ETH) return 'ETH';
     if (motokoChain.BTC) return 'BTC';
     if (motokoChain.SOL) return 'SOL';
     if (motokoChain.POLYGON) return 'POLYGON';
     if (motokoChain.ARBITRUM) return 'ARBITRUM';
     if (motokoChain.OPTIMISM) return 'OPTIMISM';
+    
+    // Handle array format [chain, null]
+    if (Array.isArray(motokoChain) && motokoChain.length > 0) {
+      const chainName = motokoChain[0];
+      if (typeof chainName === 'string') {
+        return chainName as ChainType;
+      }
+    }
+    
+    console.warn('Unknown chain format:', motokoChain);
     return 'ETH';
   }
 
   // Helper function to map Motoko transaction to TypeScript transaction
   private mapMotokoTransaction(motokoTx: any): Transaction {
+    // Convert nanoseconds to milliseconds for JavaScript Date
+    const convertTime = (nanoseconds: number) => Math.floor(nanoseconds / 1_000_000);
+    
+    console.log('Mapping transaction data:', motokoTx);
+    
+    // Handle different data formats - check if it's already in the expected format
+    const id = motokoTx.id || motokoTx[0]?.id;
+    const userAddress = motokoTx.userAddress || motokoTx[0]?.userAddress;
+    const depositAddress = motokoTx.depositAddress || motokoTx[0]?.depositAddress;
+    const chain = motokoTx.chain || motokoTx[0]?.chain;
+    const amount = motokoTx.amount || motokoTx[0]?.amount;
+    const status = motokoTx.status || motokoTx[0]?.status;
+    const createdAt = motokoTx.createdAt || motokoTx[0]?.createdAt;
+    const confirmedAt = motokoTx.confirmedAt || motokoTx[0]?.confirmedAt;
+    const rewardSentAt = motokoTx.rewardSentAt || motokoTx[0]?.rewardSentAt;
+    const fundingTxHash = motokoTx.fundingTxHash || motokoTx[0]?.fundingTxHash;
+    const rewardTxHash = motokoTx.rewardTxHash || motokoTx[0]?.rewardTxHash;
+    const explorerUrl = motokoTx.explorerUrl || motokoTx[0]?.explorerUrl;
+    
     return {
-      id: motokoTx.id,
-      userAddress: motokoTx.userAddress,
-      depositAddress: motokoTx.depositAddress,
-      chain: this.mapMotokoChain(motokoTx.chain),
-      amount: Number(motokoTx.amount),
-      status: this.mapMotokoStatus(motokoTx.status),
-      createdAt: Number(motokoTx.createdAt),
-      confirmedAt: motokoTx.confirmedAt && motokoTx.confirmedAt[0] ? Number(motokoTx.confirmedAt[0]) : undefined,
-      rewardSentAt: motokoTx.rewardSentAt && motokoTx.rewardSentAt[0] ? Number(motokoTx.rewardSentAt[0]) : undefined,
-      fundingTxHash: motokoTx.fundingTxHash && motokoTx.fundingTxHash[0] ? motokoTx.fundingTxHash[0] : undefined,
-      rewardTxHash: motokoTx.rewardTxHash && motokoTx.rewardTxHash[0] ? motokoTx.rewardTxHash[0] : undefined,
-      explorerUrl: motokoTx.explorerUrl && motokoTx.explorerUrl[0] ? motokoTx.explorerUrl[0] : undefined,
+      id: String(id || ''),
+      userAddress: String(userAddress || ''),
+      depositAddress: String(depositAddress || ''),
+      chain: this.mapMotokoChain(chain),
+      amount: Number(amount || 0),
+      status: this.mapMotokoStatus(status),
+      createdAt: createdAt ? convertTime(Number(createdAt)) : Date.now(),
+      confirmedAt: confirmedAt && confirmedAt[0] ? convertTime(Number(confirmedAt[0])) : undefined,
+      rewardSentAt: rewardSentAt && rewardSentAt[0] ? convertTime(Number(rewardSentAt[0])) : undefined,
+      fundingTxHash: fundingTxHash && fundingTxHash[0] ? String(fundingTxHash[0]) : undefined,
+      rewardTxHash: rewardTxHash && rewardTxHash[0] ? String(rewardTxHash[0]) : undefined,
+      explorerUrl: explorerUrl && explorerUrl[0] ? String(explorerUrl[0]) : undefined,
     };
   }
 

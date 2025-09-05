@@ -71,14 +71,19 @@ export default function AdminPage() {
   const markAsPaid = async (transactionId: string) => {
     try {
       setLoading(true);
+      console.log('Marking transaction as paid:', transactionId);
       const result = await motoko.markAsPaid(transactionId);
+      console.log('Mark as paid result:', result);
+      
       if (result.success) {
-        await load(); // Refresh the data
+        // Force refresh the data
+        await load();
         alert('Transaction marked as paid successfully');
       } else {
         alert(`Failed to mark as paid: ${result.error}`);
       }
     } catch (error) {
+      console.error('Error marking as paid:', error);
       alert(`Error: ${error}`);
     } finally {
       setLoading(false);

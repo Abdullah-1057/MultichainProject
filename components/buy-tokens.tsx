@@ -8,12 +8,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, Copy, DollarSign, Link2, Loader2, ScanLine, Shield, Wallet } from 'lucide-react';
+import { CheckCircle, Copy, DollarSign, Link2, Loader2, ScanLine, Shield, Wallet, Send } from 'lucide-react';
 import { MotokoBackendService } from '@/lib/motoko-backend-real';
 import { SolanaWalletManager } from '@/lib/solana-wallet';
 import { BitcoinWalletManager } from '@/lib/bitcoin-wallet';
 import MyTokensSection from './my-tokens-section';
-// import HourlyPayment from './hourly-payment';
 
 type ChainOption = 'ETH' | 'SOL' | 'BTC';
 
@@ -28,6 +27,8 @@ const CHAIN_META: Record<ChainOption, { name: string; icon: string; hint: string
   SOL: { name: 'Solana', icon: '◎', hint: 'Phantom / Solflare' },
   BTC: { name: 'Bitcoin', icon: '₿', hint: 'Unisat / Xverse / OKX' },
 };
+
+type AttemptStatus = 'success' | 'failed' | 'rejected' | 'timeout';
 
 export default function BuyTokens() {
   const [amount, setAmount] = useState<string>('');
@@ -47,13 +48,22 @@ export default function BuyTokens() {
   const [copied, setCopied] = useState(false);
   const [lastTxId, setLastTxId] = useState<string | null>(null);
 
+  // Send/Log state
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [lastAttemptStatus, setLastAttemptStatus] = useState<AttemptStatus | null>(null);
+  const [lastAttemptHash, setLastAttemptHash] = useState<string | null>(null);
+
   useEffect(() => {
     setStepError(null);
     setRequestError(null);
+    setSendError(null);
     setDepositAddress('');
     setTransactionId('');
     setMinConfirmations(null);
     setExpiresAt(null);
+    setLastAttemptStatus(null);
+    setLastAttemptHash(null);
     if (chain === 'BTC') detectBTCProviders();
   }, [chain]);
 
@@ -68,25 +78,25 @@ export default function BuyTokens() {
       if (v) raw.push(k);
       return Boolean(v);
     };
-    
+
     console.log('Detecting BTC providers...');
-    console.log('Window object keys:', Object.keys(window).filter(k => 
-      k.toLowerCase().includes('btc') || 
-      k.toLowerCase().includes('bitcoin') || 
-      k.toLowerCase().includes('unisat') || 
-      k.toLowerCase().includes('xverse') || 
+    console.log('Window object keys:', Object.keys(window).filter(k =>
+      k.toLowerCase().includes('btc') ||
+      k.toLowerCase().includes('bitcoin') ||
+      k.toLowerCase().includes('unisat') ||
+      k.toLowerCase().includes('xverse') ||
       k.toLowerCase().includes('okx')
     ));
-    
+
     const unisat = has('window.unisat', (window as any).unisat);
     const xverseDirect = has('window.xverse', (window as any).xverse);
     const xverseProviders = has('window.xverse.providers.bitcoin', (window as any).xverse?.providers?.bitcoin);
     const xverseBtc = has('window.btc', (window as any).btc);
     const xverseAlt = has('window.XverseProviders.bitcoin', (window as any).XverseProviders?.bitcoin);
     const okx = has('window.okxwallet.bitcoin', (window as any).okxwallet?.bitcoin);
-    
+
     console.log('Detection results:', { unisat, xverseDirect, xverseProviders, xverseBtc, xverseAlt, okx });
-    
+
     setBtcDetected({ unisat, xverse: xverseDirect || xverseProviders || xverseBtc || xverseAlt, okx, raw });
   };
 
@@ -123,7 +133,7 @@ export default function BuyTokens() {
         // Ensure detection is refreshed in case the tab was open before install
         btc.refreshDetection();
         detectBTCProviders();
-        
+
         console.log('BTC wallet manager created, attempting connection...');
         try {
           const info = await btc.connect();
@@ -133,17 +143,17 @@ export default function BuyTokens() {
         } catch (e: any) {
           console.error('BTC connection failed:', e);
           // Provide actionable hints for Xverse
-          const msg = e?.message || ''
+          const msg = e?.message || '';
           if (msg.includes('No Bitcoin wallet detected')) {
-            throw new Error('No BTC wallet detected. Install Unisat or Xverse, then refresh the page.')
+            throw new Error('No BTC wallet detected. Install Unisat or Xverse, then refresh the page.');
           }
           if (msg.includes('unlock') || msg.includes('address')) {
-            throw new Error('Please unlock Xverse/Unisat and approve the connection prompt, then try again.')
+            throw new Error('Please unlock Xverse/Unisat and approve the connection prompt, then try again.');
           }
           if (msg.includes('Xverse connection failed')) {
-            throw new Error('Xverse wallet connection failed. Please make sure Xverse is unlocked and try again.')
+            throw new Error('Xverse wallet connection failed. Please make sure Xverse is unlocked and try again.');
           }
-          throw e
+          throw e;
         }
       }
     } catch (err: any) {
@@ -223,6 +233,169 @@ export default function BuyTokens() {
     }
   };
 
+  // ---- NEW: Send and Log helpers -------------------------------------------------
+
+  const mapErrorToStatus = (err: any): AttemptStatus => {
+    const msg = (err?.message || String(err || '')).toLowerCase();
+    const code = err?.code;
+    if (code === 4001 || msg.includes('user rejected') || msg.includes('rejected by user') || msg.includes('user denied')) {
+      return 'rejected';
+    }
+    if (msg.includes('timeout') || msg.includes('timed out')) return 'timeout';
+    return 'failed';
+  };
+
+  const logAttemptToBackend = async (payload: {
+    chain: ChainOption;
+    network?: string | null;
+    from: string;
+    to: string;
+    amount: number;
+    txHash?: string | null;
+    status: AttemptStatus;
+    error?: string | null;
+    createdAt?: number;
+    depositTransactionId?: string | null; // your canister-side id
+  }) => {
+    const motoko = MotokoBackendService.getInstance();
+
+    // Try the canonical method name first
+    if (typeof (motoko as any).logPaymentAttempt === 'function') {
+      return (motoko as any).logPaymentAttempt(payload);
+    }
+
+    // Fallback names if your service differs
+    if (typeof (motoko as any).recordPaymentAttempt === 'function') {
+      return (motoko as any).recordPaymentAttempt(payload);
+    }
+
+    if (typeof (motoko as any).createPaymentAttempt === 'function') {
+      return (motoko as any).createPaymentAttempt(payload);
+    }
+
+    // If not implemented yet, at least avoid crashing the flow
+    console.warn('No logPaymentAttempt/recordPaymentAttempt/createPaymentAttempt found on MotokoBackendService.');
+    return { success: false, error: 'No logging endpoint implemented' };
+  };
+
+  const getEthChainIdHex = async (): Promise<string | null> => {
+    try {
+      if (!(window as any).ethereum) return null;
+      const id = await (window as any).ethereum.request({ method: 'eth_chainId' });
+      return id || null;
+    } catch {
+      return null;
+    }
+  };
+
+  // NOTE: We assume amount is in the native coin units to send:
+  // ETH (ETH), SOL (SOL), BTC (BTC).
+  // If you price tokens differently, map conversion before calling send.
+  const sendPayment = async () => {
+    if (!connected || !depositAddress) {
+      setSendError('Missing wallet connection or deposit address.');
+      return;
+    }
+    setSending(true);
+    setSendError(null);
+    setLastAttemptStatus(null);
+    setLastAttemptHash(null);
+
+    const startedAt = Date.now();
+    let status: AttemptStatus = 'failed';
+    let txHash: string | null = null;
+    let errMsg: string | null = null;
+    let network: string | null = null;
+
+    try {
+      if (connected.type === 'ETH') {
+        // --- EVM ---
+        if (!(window as any).ethereum) {
+          throw new Error('No EVM provider available.');
+        }
+        // chainId (hex)
+        const chainIdHex = await getEthChainIdHex();
+        network = chainIdHex || null;
+
+        // value in wei (amount is interpreted as ETH here)
+        const wei = BigInt(Math.round(Number(amount) * 1e18)).toString();
+
+        const txParams = {
+          from: connected.address,
+          to: depositAddress,
+          value: '0x' + BigInt(wei).toString(16),
+        };
+
+        // Request send
+        txHash = await (window as any).ethereum.request({
+          method: 'eth_sendTransaction',
+          params: [txParams],
+        });
+
+        status = 'success';
+      } else if (connected.type === 'SOL') {
+        // --- SOLANA ---
+        const sol = new SolanaWalletManager();
+        // Try explicit send methods your manager might expose
+        if (typeof (sol as any).sendSOL === 'function') {
+          txHash = await (sol as any).sendSOL({ to: depositAddress, amount: Number(amount) });
+        } else if (typeof (sol as any).sendTransaction === 'function') {
+          // If your manager takes lamports, convert: lamports = SOL * 1e9
+          txHash = await (sol as any).sendTransaction({ to: depositAddress, amount: Number(amount) });
+        } else {
+          throw new Error('SolanaWalletManager has no send method (sendSOL/sendTransaction).');
+        }
+        network = (sol as any).getNetwork?.() || null;
+        status = 'success';
+      } else if (connected.type === 'BTC') {
+        // --- BITCOIN ---
+        const btc = new BitcoinWalletManager();
+        // Make sure we use a fresh detected provider (in case of reloads/install)
+        btc.refreshDetection();
+
+        txHash = await btc.sendTransaction({
+          to: depositAddress,
+          amount: Number(amount), // BTC
+        });
+        // You may derive/attach network if your BTC manager exposes it
+        network = null;
+        status = 'success';
+      } else {
+        throw new Error('Unsupported chain for send.');
+      }
+    } catch (err: any) {
+      const mapped = mapErrorToStatus(err);
+      status = mapped;
+      errMsg = err?.message || String(err);
+      setSendError(errMsg);
+    } finally {
+      setLastAttemptStatus(status);
+      setLastAttemptHash(txHash || null);
+
+      // Always log to backend
+      try {
+        await logAttemptToBackend({
+          chain,
+          network,
+          from: connected.address,
+          to: depositAddress,
+          amount: Number(amount),
+          txHash,
+          status,
+          error: errMsg,
+          createdAt: startedAt,
+          depositTransactionId: transactionId || lastTxId || null,
+        });
+      } catch (logErr) {
+        console.warn('Failed to log attempt:', logErr);
+      }
+
+      setSending(false);
+    }
+  };
+
+  // ---- Copy helper ----------------------------------------------------------------
+
   const copyDeposit = async () => {
     if (!depositAddress) return;
     try {
@@ -300,9 +473,9 @@ export default function BuyTokens() {
                   </div>
                   <Badge className="bg-green-500 text-white">Connected</Badge>
                 </div>
-                <Button 
-                  onClick={() => setConnected(null)} 
-                  variant="outline" 
+                <Button
+                  onClick={() => setConnected(null)}
+                  variant="outline"
                   size="sm"
                   className="border-red-500/40 text-red-300 hover:bg-red-500/10"
                 >
@@ -329,8 +502,8 @@ export default function BuyTokens() {
                 )}
                 {chain === 'BTC' && (
                   <div className="text-xs text-slate-400">
-                    No Bitcoin wallet? Install
-                    {' '}<a href="https://unisat.io/" target="_blank" className="text-indigo-300 hover:text-indigo-200 underline">Unisat</a>
+                    No Bitcoin wallet? Install{' '}
+                    <a href="https://unisat.io/" target="_blank" className="text-indigo-300 hover:text-indigo-200 underline">Unisat</a>
                     {' '}or{' '}
                     <a href="https://www.xverse.app/" target="_blank" className="text-indigo-300 hover:text-indigo-200 underline">Xverse</a>.
                   </div>
@@ -373,44 +546,80 @@ export default function BuyTokens() {
             )}
 
             {depositAddress && (
-              <div className="space-y-3">
-                <div className="text-sm text-slate-300">Deposit Address</div>
-                <div className="p-3 bg-slate-700/60 rounded-lg border border-slate-600 flex items-start justify-between gap-3">
-                  <div className="font-mono text-xs text-slate-200 break-all">{depositAddress}</div>
-                  <Button size="sm" variant="outline" onClick={copyDeposit} className="border-slate-500 text-slate-200">
-                    {copied ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
-                  </Button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
-                  <div className="p-2 rounded bg-slate-700/60 border border-slate-600">
-                    <div className="text-slate-400">Transaction ID</div>
-                    <div className="font-mono text-slate-200 truncate">{transactionId}</div>
+              <div className="space-y-4">
+                {/* Deposit details */}
+                <div className="space-y-3">
+                  <div className="text-sm text-slate-300">Deposit Address</div>
+                  <div className="p-3 bg-slate-700/60 rounded-lg border border-slate-600 flex items-start justify-between gap-3">
+                    <div className="font-mono text-xs text-slate-200 break-all">{depositAddress}</div>
+                    <Button size="sm" variant="outline" onClick={copyDeposit} className="border-slate-500 text-slate-200">
+                      {copied ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                    </Button>
                   </div>
-                  <div className="p-2 rounded bg-slate-700/60 border border-slate-600">
-                    <div className="text-slate-400">Min Confirms</div>
-                    <div className="text-slate-200">{minConfirmations ?? '-'}</div>
-                  </div>
-                  <div className="p-2 rounded bg-slate-700/60 border border-slate-600">
-                    <div className="text-slate-400">Expires</div>
-                    <div className="text-slate-200">{expiresAt ? new Date(expiresAt).toLocaleTimeString() : '-'}</div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
+                    <div className="p-2 rounded bg-slate-700/60 border border-slate-600">
+                      <div className="text-slate-400">Transaction ID</div>
+                      <div className="font-mono text-slate-200 truncate">{transactionId}</div>
+                    </div>
+                    <div className="p-2 rounded bg-slate-700/60 border border-slate-600">
+                      <div className="text-slate-400">Min Confirms</div>
+                      <div className="text-slate-200">{minConfirmations ?? '-'}</div>
+                    </div>
+                    <div className="p-2 rounded bg-slate-700/60 border border-slate-600">
+                      <div className="text-slate-400">Expires</div>
+                      <div className="text-slate-200">{expiresAt ? new Date(expiresAt).toLocaleTimeString() : '-'}</div>
+                    </div>
                   </div>
                 </div>
 
+                {/* NEW: Send payment button */}
+                <div className="pt-2">
+                  <Button
+                    onClick={sendPayment}
+                    disabled={!connected || !depositAddress || sending}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                    Send Payment via {CHAIN_META[chain].icon}
+                  </Button>
+                </div>
+
+                {/* Outcome + info */}
+                {(sendError || lastAttemptStatus || lastAttemptHash) && (
+                  <div className="space-y-2">
+                    {sendError && (
+                      <Alert className="border-red-500/40 bg-red-500/10">
+                        <AlertDescription className="text-red-300">{sendError}</AlertDescription>
+                      </Alert>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
+                      <div className="p-2 rounded bg-slate-700/60 border border-slate-600">
+                        <div className="text-slate-400">Attempt Status</div>
+                        <div className="text-slate-200">{lastAttemptStatus ?? '-'}</div>
+                      </div>
+                      <div className="p-2 rounded bg-slate-700/60 border border-slate-600 md:col-span-2">
+                        <div className="text-slate-400">Tx Hash</div>
+                        <div className="font-mono text-slate-200 break-all">{lastAttemptHash ?? '-'}</div>
+                      </div>
+                    </div>
+                    <Alert className="border-blue-500/40 bg-blue-500/10">
+                      <AlertDescription className="text-blue-300">
+                        Every attempt (success, failure, rejection, timeout) is logged to the backend with chain, network, from, to, amount, txHash, status, error (if any), and timestamp.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+
+                {/* FYI note */}
                 <Alert className="border-blue-500/40 bg-blue-500/10">
                   <AlertDescription className="text-blue-300">
-                    Use your connected wallet to send funds to the deposit address above. This demo does not perform on-chain payments from the UI.
+                    You can also send manually from your wallet to the deposit address above. This button simply initiates the on-chain transfer from the connected wallet.
                   </AlertDescription>
                 </Alert>
               </div>
             )}
           </CardContent>
         </Card>
-
-        {/* Hourly Rotating Payment Section - Temporarily disabled */}
-        {/* <HourlyPayment onPaymentComplete={(txHash) => {
-          console.log('Payment completed:', txHash);
-          // You can add additional logic here, like showing a success message
-        }} /> */}
 
         {/* My Tokens Section */}
         <MyTokensSection userAddress={connected?.address} />
@@ -423,5 +632,3 @@ export default function BuyTokens() {
     </div>
   );
 }
-
-

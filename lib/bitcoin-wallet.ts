@@ -60,6 +60,10 @@ export class BitcoinWalletManager {
     console.log('No Bitcoin wallet detected');
   }
 
+  private isJsonRpcError(result: any): boolean {
+    return result && typeof result === 'object' && result.jsonrpc === '2.0' && result.error;
+  }
+
   private detectXverse(): boolean {
     const win = window as any;
     
@@ -147,39 +151,97 @@ export class BitcoinWalletManager {
         
         // Try multiple connection methods for Xverse
         try {
-          if (typeof this.wallet.request === 'function') {
-            console.log('Trying wallet.request("getAccounts")');
+          // Method 1: Try direct function calls first (no parameters)
+          if (typeof this.wallet.getAccounts === 'function') {
+            console.log('Trying wallet.getAccounts()');
             try {
-              accounts = await this.wallet.request('getAccounts');
-            } catch (e1) {
-              console.log('Method 1 failed, trying with params object:', e1);
+              accounts = await this.wallet.getAccounts();
+              if (accounts && !this.isJsonRpcError(accounts)) {
+                console.log('Success with getAccounts()');
+              }
+            } catch (e) {
+              console.log('getAccounts() failed:', e);
+            }
+          }
+          
+          if (!accounts || this.isJsonRpcError(accounts)) {
+            if (typeof this.wallet.requestAccounts === 'function') {
+              console.log('Trying wallet.requestAccounts()');
               try {
-                accounts = await this.wallet.request({ method: 'getAccounts' });
-              } catch (e2) {
-                console.log('Method 2 failed, trying requestAccounts:', e2);
-                accounts = await this.wallet.request('requestAccounts');
+                accounts = await this.wallet.requestAccounts();
+                if (accounts && !this.isJsonRpcError(accounts)) {
+                  console.log('Success with requestAccounts()');
+                }
+              } catch (e) {
+                console.log('requestAccounts() failed:', e);
               }
             }
-          } else if (typeof this.wallet.getAccounts === 'function') {
-            console.log('Trying wallet.getAccounts()');
-            accounts = await this.wallet.getAccounts();
-          } else if (typeof this.wallet.requestAccounts === 'function') {
-            console.log('Trying wallet.requestAccounts()');
-            accounts = await this.wallet.requestAccounts();
-          } else if (typeof this.wallet.connect === 'function') {
+          }
+          
+          // Method 2: Try request() with no parameters (most likely to work)
+          if ((!accounts || this.isJsonRpcError(accounts)) && typeof this.wallet.request === 'function') {
+            console.log('Trying wallet.request("getAccounts") with no parameters');
+            try {
+              accounts = await this.wallet.request('getAccounts');
+              if (accounts && !this.isJsonRpcError(accounts)) {
+                console.log('Success with request("getAccounts") no params');
+              }
+            } catch (e) {
+              console.log('request("getAccounts") no params failed:', e);
+            }
+          }
+          
+          // Method 3: Try request() with empty array
+          if ((!accounts || this.isJsonRpcError(accounts)) && typeof this.wallet.request === 'function') {
+            console.log('Trying wallet.request("getAccounts", [])');
+            try {
+              accounts = await this.wallet.request('getAccounts', []);
+              if (accounts && !this.isJsonRpcError(accounts)) {
+                console.log('Success with request("getAccounts", [])');
+              }
+            } catch (e) {
+              console.log('request("getAccounts", []) failed:', e);
+            }
+          }
+          
+          // Method 4: Try requestAccounts with no parameters
+          if ((!accounts || this.isJsonRpcError(accounts)) && typeof this.wallet.request === 'function') {
+            console.log('Trying wallet.request("requestAccounts") with no parameters');
+            try {
+              accounts = await this.wallet.request('requestAccounts');
+              if (accounts && !this.isJsonRpcError(accounts)) {
+                console.log('Success with request("requestAccounts") no params');
+              }
+            } catch (e) {
+              console.log('request("requestAccounts") no params failed:', e);
+            }
+          }
+          
+          // Method 5: Try connect()
+          if ((!accounts || this.isJsonRpcError(accounts)) && typeof this.wallet.connect === 'function') {
             console.log('Trying wallet.connect()');
-            const res = await this.wallet.connect();
-            accounts = res?.accounts || res;
-          } else {
-            // Try to find any method that might get accounts
-            const possibleMethods = ['getAccounts', 'requestAccounts', 'connect', 'enable'];
+            try {
+              const res = await this.wallet.connect();
+              accounts = res?.accounts || res;
+              if (accounts && !this.isJsonRpcError(accounts)) {
+                console.log('Success with connect()');
+              }
+            } catch (e) {
+              console.log('connect() failed:', e);
+            }
+          }
+          
+          // Method 6: Try other possible methods
+          if (!accounts || this.isJsonRpcError(accounts)) {
+            const possibleMethods = ['enable', 'authorize'];
             for (const method of possibleMethods) {
               if (typeof this.wallet[method] === 'function') {
                 console.log(`Trying wallet.${method}()`);
                 try {
                   const result = await this.wallet[method]();
-                  if (result) {
+                  if (result && !this.isJsonRpcError(result)) {
                     accounts = result.accounts || result;
+                    console.log(`Success with ${method}()`);
                     break;
                   }
                 } catch (e) {
@@ -188,6 +250,26 @@ export class BitcoinWalletManager {
               }
             }
           }
+          
+          // Check if we got a JSON-RPC error
+          if (this.isJsonRpcError(accounts)) {
+            const errorCode = accounts.error?.code;
+            const errorMsg = accounts.error?.message || 'Unknown error';
+            console.error('JSON-RPC error from Xverse:', accounts.error);
+            
+            let userMessage = `Xverse connection failed: ${errorMsg}`;
+            
+            if (errorCode === -32602) {
+              userMessage = 'Xverse rejected the connection parameters. Please unlock your wallet and try again.';
+            } else if (errorCode === 4001) {
+              userMessage = 'Xverse connection was rejected. Please approve the connection request in your wallet.';
+            } else if (errorCode === 4100) {
+              userMessage = 'Xverse is not authorized. Please unlock your wallet and try again.';
+            }
+            
+            throw new Error(userMessage);
+          }
+          
         } catch (error) {
           console.error('All Xverse connection methods failed:', error);
           throw new Error(`Xverse connection failed: ${error instanceof Error ? error.message : 'Unknown error'}. Please make sure Xverse is unlocked and try again.`);
@@ -195,12 +277,31 @@ export class BitcoinWalletManager {
 
         console.log('Xverse accounts result:', accounts);
         
-        const first = Array.isArray(accounts) ? accounts[0] : accounts?.[0]
+        // Handle different response formats from Xverse
+        let first: any = null;
+        
+        if (Array.isArray(accounts)) {
+          first = accounts[0];
+        } else if (accounts?.accounts && Array.isArray(accounts.accounts)) {
+          first = accounts.accounts[0];
+        } else if (accounts?.result && Array.isArray(accounts.result)) {
+          first = accounts.result[0];
+        } else if (accounts?.address) {
+          // Direct address in response
+          first = { address: accounts.address, publicKey: accounts.publicKey };
+        } else if (accounts) {
+          first = accounts;
+        }
+        
+        console.log('Extracted first account:', first);
+        
         if (!first?.address) {
+          console.error('No address found in Xverse response:', accounts);
           throw new Error('Xverse did not return an address. Please unlock the wallet and try again.')
         }
-        address = first.address
-        publicKey = first.publicKey || first.address
+        
+        address = first.address;
+        publicKey = first.publicKey || first.address;
       } else if (this.walletType === 'okx') {
         const accounts = await this.wallet.requestAccounts()
         address = accounts[0]

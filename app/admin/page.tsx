@@ -224,17 +224,7 @@ export default function AdminPage() {
                         <TableCell className="font-mono text-xs text-slate-300 truncate max-w-[160px]">{tx.userAddress}</TableCell>
                         <TableCell className="font-mono text-xs text-slate-300 truncate max-w-[160px]">{tx.depositAddress}</TableCell>
                         <TableCell>
-                          <Badge className={
-                            tx.status === 'PAID' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' :
-                            tx.status === 'PENDING' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' :
-                            tx.status === 'CONFIRMED' ? 'bg-green-500/20 text-green-300 border-green-500/40' :
-                            tx.status === 'REWARD_SENT' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
-                            tx.status === 'FAILED' ? 'bg-red-500/20 text-red-300 border-red-500/40' :
-                            tx.status === 'EXPIRED' ? 'bg-orange-500/20 text-orange-300 border-orange-500/40' :
-                            'bg-slate-700 text-white'
-                          }>
-                            {tx.status}
-                          </Badge>
+                          <Badge className="bg-slate-700 text-white">{tx.status}</Badge>
                         </TableCell>
                         <TableCell className="text-slate-300 text-sm">
                           {tx.createdAt ? new Date(tx.createdAt).toLocaleString() : '-'}

@@ -440,12 +440,12 @@ export class MotokoBackendService {
     if (!motokoStatus) return 'PENDING';
     
     // Handle variant format: {PENDING: null} or {PAID: null}
-    if (motokoStatus.PENDING) return 'PENDING';
-    if (motokoStatus.CONFIRMED) return 'CONFIRMED';
-    if (motokoStatus.REWARD_SENT) return 'REWARD_SENT';
-    if (motokoStatus.FAILED) return 'FAILED';
-    if (motokoStatus.EXPIRED) return 'EXPIRED';
-    if (motokoStatus.PAID) return 'PAID';
+    if ('PENDING' in motokoStatus) return 'PENDING';
+    if ('CONFIRMED' in motokoStatus) return 'CONFIRMED';
+    if ('REWARD_SENT' in motokoStatus) return 'REWARD_SENT';
+    if ('FAILED' in motokoStatus) return 'FAILED';
+    if ('EXPIRED' in motokoStatus) return 'EXPIRED';
+    if ('PAID' in motokoStatus) return 'PAID';
     
     // Handle string format
     if (typeof motokoStatus === 'string') {
@@ -463,12 +463,12 @@ export class MotokoBackendService {
     if (!motokoChain) return 'ETH';
     
     // Handle variant format: {ETH: null}, {SOL: null}, {BTC: null}
-    if (motokoChain.ETH) return 'ETH';
-    if (motokoChain.BTC) return 'BTC';
-    if (motokoChain.SOL) return 'SOL';
-    if (motokoChain.POLYGON) return 'POLYGON';
-    if (motokoChain.ARBITRUM) return 'ARBITRUM';
-    if (motokoChain.OPTIMISM) return 'OPTIMISM';
+    if ('ETH' in motokoChain) return 'ETH';
+    if ('BTC' in motokoChain) return 'BTC';
+    if ('SOL' in motokoChain) return 'SOL';
+    if ('POLYGON' in motokoChain) return 'POLYGON';
+    if ('ARBITRUM' in motokoChain) return 'ARBITRUM';
+    if ('OPTIMISM' in motokoChain) return 'OPTIMISM';
     
     // Handle string format
     if (typeof motokoChain === 'string') {

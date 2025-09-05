@@ -550,7 +550,7 @@ export default function BuyTokens() {
                 {isRequesting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ScanLine className="h-4 w-4 mr-2" />}
                 Generate Deposit
               </Button>
-              <Button onClick={createPurchaseAndStore} disabled={isRequesting || !amount} variant="outline" className="border-slate-600 text-slate-200">
+              <Button onClick={createPurchaseAndStore} disabled={isRequesting || !amount} variant="outline" className="border-slate-600 text-slate-200 text-black">
                 {isRequesting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Create Purchase (Store)
               </Button>
@@ -570,7 +570,7 @@ export default function BuyTokens() {
                   <div className="p-3 bg-slate-700/60 rounded-lg border border-slate-600 flex items-start justify-between gap-3">
                     <div className="font-mono text-xs text-slate-200 break-all">{depositAddress}</div>
                     <Button size="sm" variant="outline" onClick={copyDeposit} className="border-slate-500 text-slate-200">
-                      {copied ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                      {copied ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4 text-black" />}
                     </Button>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">

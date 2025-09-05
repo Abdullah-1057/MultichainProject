@@ -6,14 +6,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { 
-  Coins, 
-  ExternalLink, 
-  Loader2, 
-  RefreshCw, 
-  Clock, 
-  CheckCircle, 
-  XCircle, 
+import {
+  Coins,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  Clock,
+  CheckCircle,
+  XCircle,
   AlertCircle,
   Copy,
   DollarSign,
@@ -26,7 +26,46 @@ interface MyTokensSectionProps {
   className?: string;
 }
 
-const STATUS_ICONS = {
+/** ===== Helpers to normalize Candid values ===== **/
+
+// Unwrap a Candid variant like { ETH: null } → "ETH"
+function unwrapVariant(v: any, fallback = 'UNKNOWN'): string {
+  if (!v || typeof v !== 'object') return fallback;
+  const keys = Object.keys(v);
+  return keys.length ? keys[0] : fallback;
+}
+
+// Unwrap Candid opt like [] | ["val"] → undefined | "val"
+function unwrapOpt<T = string>(v: any): T | undefined {
+  return Array.isArray(v) ? (v.length ? (v[0] as T) : undefined) : (v as T | undefined);
+}
+
+// Convert Candid time ns (bigint) → JS ms (number)
+function nsBigIntToMsNumber(ns: bigint | number | undefined | null): number | undefined {
+  if (ns === undefined || ns === null) return undefined;
+  if (typeof ns === 'bigint') return Number(ns / 1_000_000n); // ns → ms
+  if (typeof ns === 'number') {
+    // If value looks like seconds, lift to ms; if already ms, keep it.
+    return ns < 10 ** 12 ? ns * 1000 : ns;
+  }
+  return undefined;
+}
+
+// Type used by the UI after normalization
+type UITransaction = {
+  id: string;
+  amount: number;
+  chain: string;
+  status: string;
+  createdAt?: number; // ms
+  depositAddress?: string;
+  userAddress?: string;
+  fundingTxHash?: string;
+  rewardTxHash?: string;
+  explorerUrl?: string;
+};
+
+const STATUS_ICONS: Record<string, JSX.Element> = {
   PENDING: <Clock className="h-4 w-4 text-yellow-400" />,
   CONFIRMED: <CheckCircle className="h-4 w-4 text-green-400" />,
   REWARD_SENT: <Coins className="h-4 w-4 text-emerald-400" />,
@@ -35,7 +74,7 @@ const STATUS_ICONS = {
   PAID: <CheckCircle className="h-4 w-4 text-blue-400" />,
 };
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Record<string, string> = {
   PENDING: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40',
   CONFIRMED: 'bg-green-500/20 text-green-300 border-green-500/40',
   REWARD_SENT: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
@@ -44,7 +83,7 @@ const STATUS_COLORS = {
   PAID: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
 };
 
-const CHAIN_ICONS = {
+const CHAIN_ICONS: Record<string, string> = {
   ETH: '⟠',
   BTC: '₿',
   SOL: '◎',
@@ -54,12 +93,38 @@ const CHAIN_ICONS = {
 };
 
 export default function MyTokensSection({ userAddress, className = '' }: MyTokensSectionProps) {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<UITransaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
   const motoko = MotokoBackendService.getInstance();
+
+  // Normalize a raw Motoko transaction (Candid) into a UI-friendly record
+  const normalizeTx = (raw: Transaction): UITransaction => {
+    const chain = typeof (raw as any).chain === 'string'
+      ? (raw as any).chain
+      : unwrapVariant((raw as any).chain, 'UNKNOWN');
+
+    const status = typeof (raw as any).status === 'string'
+      ? (raw as any).status
+      : unwrapVariant((raw as any).status, 'UNKNOWN');
+
+    const createdAtMs = nsBigIntToMsNumber((raw as any).createdAt);
+
+    return {
+      id: (raw as any).id ?? '',
+      amount: Number((raw as any).amount ?? 0),
+      chain,
+      status,
+      createdAt: createdAtMs,
+      depositAddress: (raw as any).depositAddress ?? '',
+      userAddress: (raw as any).userAddress ?? '',
+      fundingTxHash: unwrapOpt<string>((raw as any).fundingTxHash),
+      rewardTxHash: unwrapOpt<string>((raw as any).rewardTxHash),
+      explorerUrl: unwrapOpt<string>((raw as any).explorerUrl),
+    };
+  };
 
   const loadTransactions = async () => {
     if (!userAddress) {
@@ -72,9 +137,13 @@ export default function MyTokensSection({ userAddress, className = '' }: MyToken
 
     try {
       const userTxs = await motoko.getTransactionsByUser(userAddress);
-      // Sort by creation date (newest first)
-      userTxs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      setTransactions(userTxs);
+      // Normalize and sort safely by ms number (newest first)
+      const normalized = (userTxs || []).map(normalizeTx).sort((a, b) => {
+        const ams = a.createdAt ?? 0;
+        const bms = b.createdAt ?? 0;
+        return bms - ams;
+      });
+      setTransactions(normalized);
     } catch (err: any) {
       setError(err?.message || 'Failed to load transactions');
       setTransactions([]);
@@ -85,6 +154,7 @@ export default function MyTokensSection({ userAddress, className = '' }: MyToken
 
   useEffect(() => {
     loadTransactions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userAddress]);
 
   const copyToClipboard = async (text: string, type: string) => {
@@ -97,8 +167,9 @@ export default function MyTokensSection({ userAddress, className = '' }: MyToken
     }
   };
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString();
+  const formatDate = (timestampMs?: number) => {
+    if (!timestampMs) return '-';
+    return new Date(timestampMs).toLocaleString();
   };
 
   const formatAmount = (amount: number) => {
@@ -107,7 +178,7 @@ export default function MyTokensSection({ userAddress, className = '' }: MyToken
 
   const getExplorerUrl = (chain: string, txHash?: string) => {
     if (!txHash) return null;
-    
+
     const urls = {
       ETH: `https://etherscan.io/tx/${txHash}`,
       BTC: `https://www.blockchain.com/btc/tx/${txHash}`,
@@ -115,12 +186,13 @@ export default function MyTokensSection({ userAddress, className = '' }: MyToken
       POLYGON: `https://polygonscan.com/tx/${txHash}`,
       ARBITRUM: `https://arbiscan.io/tx/${txHash}`,
       OPTIMISM: `https://optimistic.etherscan.io/tx/${txHash}`,
-    };
-    
-    return urls[chain as keyof typeof urls] || null;
+    } as const;
+
+    return (urls as any)[chain] || null;
   };
 
-  const totalSpent = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+  // Safe totals (amount is normalized to number)
+  const totalSpent = transactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
   const successfulTxs = transactions.filter(tx => tx.status === 'REWARD_SENT').length;
   const pendingTxs = transactions.filter(tx => tx.status === 'PENDING').length;
 
@@ -158,10 +230,10 @@ export default function MyTokensSection({ userAddress, className = '' }: MyToken
               Your token purchase history and transaction details
             </CardDescription>
           </div>
-          <Button 
-            onClick={loadTransactions} 
+          <Button
+            onClick={loadTransactions}
             disabled={loading}
-            variant="outline" 
+            variant="outline"
             size="sm"
             className="border-slate-600 text-slate-200"
           >
@@ -219,7 +291,7 @@ export default function MyTokensSection({ userAddress, className = '' }: MyToken
             <div className="text-sm text-slate-300 mb-2">
               {transactions.length} transaction{transactions.length !== 1 ? 's' : ''} found
             </div>
-            
+
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -266,32 +338,34 @@ export default function MyTokensSection({ userAddress, className = '' }: MyToken
                         {formatAmount(tx.amount)}
                       </TableCell>
                       <TableCell>
-                        <Badge className={`${STATUS_COLORS[tx.status]} flex items-center gap-1 w-fit`}>
-                          {STATUS_ICONS[tx.status]}
+                        <Badge className={`${STATUS_COLORS[tx.status] || 'bg-slate-600/30 text-slate-200 border-slate-500/40'} flex items-center gap-1 w-fit`}>
+                          {STATUS_ICONS[tx.status] || <AlertCircle className="h-4 w-4" />}
                           {tx.status.replace('_', ' ')}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-slate-300 truncate max-w-[120px]">
-                            {tx.depositAddress}
+                          <span className="font-mono text-xs text-slate-300 truncate max-w-[160px]">
+                            {tx.depositAddress ?? '-'}
                           </span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => copyToClipboard(tx.depositAddress, `deposit-${tx.id}`)}
-                            className="h-6 w-6 p-0 text-slate-400 hover:text-slate-200"
-                          >
-                            {copied === `deposit-${tx.id}` ? (
-                              <CheckCircle className="h-3 w-3 text-green-400" />
-                            ) : (
-                              <Copy className="h-3 w-3" />
-                            )}
-                          </Button>
+                          {tx.depositAddress && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => copyToClipboard(tx.depositAddress!, `deposit-${tx.id}`)}
+                              className="h-6 w-6 p-0 text-slate-400 hover:text-slate-200"
+                            >
+                              {copied === `deposit-${tx.id}` ? (
+                                <CheckCircle className="h-3 w-3 text-green-400" />
+                              ) : (
+                                <Copy className="h-3 w-3" />
+                              )}
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-slate-300 text-sm">
-                        {tx.createdAt ? formatDate(tx.createdAt) : '-'}
+                        {formatDate(tx.createdAt)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">

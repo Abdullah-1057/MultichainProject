@@ -137,10 +137,10 @@ export default function AdminPage() {
             <p className="text-slate-400">Canister y65zg-vaaaa-aaaap-anvnq-cai</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button onClick={exportCSV} variant="outline" className="border-slate-600 text-slate-200">
+            <Button onClick={exportCSV} variant="outline" className="border-slate-600 text-slate-200 text-black">
               <Download className="h-4 w-4 mr-2" /> Export CSV
             </Button>
-            <Button onClick={load} variant="outline" className="border-slate-600 text-slate-200">
+            <Button onClick={load} variant="outline" className="border-slate-600 text-slate-200 text-black">
               {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               Refresh
             </Button>
@@ -281,8 +281,8 @@ export default function AdminPage() {
                 <div className="flex items-center justify-between mt-4 text-slate-400">
                   <div className="text-sm">Page {page} of {totalPages}</div>
                   <div className="flex gap-2">
-                    <Button variant="outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="border-slate-600 text-slate-200">Prev</Button>
-                    <Button variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="border-slate-600 text-slate-200">Next</Button>
+                    <Button variant="outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="border-slate-600 text-slate-200 text-black">Prev</Button>
+                    <Button variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="border-slate-600 text-slate-200 text-black">Next</Button>
                   </div>
                 </div>
               </>

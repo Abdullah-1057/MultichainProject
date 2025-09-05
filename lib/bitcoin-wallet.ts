@@ -1,451 +1,323 @@
-// Bitcoin wallet utilities and detection
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// Bitcoin wallet utilities and detection (fixed)
+import { request as satsRequest, AddressPurpose, RpcErrorCode } from "sats-connect";
+
 export interface BitcoinWallet {
-  name: string
-  icon: string
-  isInstalled: boolean
-  isConnected: boolean
-  address?: string
-  publicKey?: string
+  name: string;
+  icon: string;
+  isInstalled: boolean;
+  isConnected: boolean;
+  address?: string;     // BTC payment address
+  publicKey?: string;
 }
 
 export interface BitcoinTransactionParams {
-  to: string
-  amount: number // in BTC
-  feeRate?: number // satoshis per byte
+  to: string;       // recipient BTC address
+  amount: number;   // in BTC
+  feeRate?: number; // sat/vB (currently only used by OKX/unisat paths)
 }
 
+type WalletType = "unisat" | "xverse" | "okx" | "";
+
 export class BitcoinWalletManager {
-  private wallet: any = null
-  private walletType: string = ''
+  private wallet: any = null;
+  private walletType: WalletType = "";
+  private connectedPaymentAddr: string | null = null;
+  private connectedPubKey: string | null = null;
 
   constructor() {
-    this.detectWallet()
+    this.detectWallet();
   }
 
   public refreshDetection() {
-    this.wallet = null
-    this.walletType = ''
-    this.detectWallet()
+    this.wallet = null;
+    this.walletType = "";
+    this.connectedPaymentAddr = null;
+    this.connectedPubKey = null;
+    this.detectWallet();
   }
 
   private detectWallet() {
-    if (typeof window === 'undefined') return
+    if (typeof window === "undefined") return;
 
-    console.log('Detecting Bitcoin wallets...');
-    console.log('Available window properties:', Object.keys(window).filter(k => k.toLowerCase().includes('btc') || k.toLowerCase().includes('bitcoin') || k.toLowerCase().includes('unisat') || k.toLowerCase().includes('xverse') || k.toLowerCase().includes('okx')));
-
-    // Check for Unisat wallet
-    if (window.unisat) {
-      console.log('Found Unisat wallet');
-      this.wallet = window.unisat
-      this.walletType = 'unisat'
-      return
-    }
-
-    // Check for Xverse wallet - try multiple detection methods
-    const xverseDetected = this.detectXverse();
-    if (xverseDetected) {
-      console.log('Found Xverse wallet');
+    // 1) Unisat
+    if ((window as any).unisat) {
+      this.wallet = (window as any).unisat;
+      this.walletType = "unisat";
       return;
     }
 
-    // Check for OKX wallet (supports Bitcoin)
-    if (window.okxwallet && window.okxwallet.bitcoin) {
-      console.log('Found OKX Bitcoin wallet');
-      this.wallet = window.okxwallet.bitcoin
-      this.walletType = 'okx'
-      return
+    // 2) OKX (bitcoin provider)
+    if ((window as any).okxwallet?.bitcoin) {
+      this.wallet = (window as any).okxwallet.bitcoin;
+      this.walletType = "okx";
+      return;
     }
 
-    console.log('No Bitcoin wallet detected');
-  }
-
-  private isJsonRpcError(result: any): boolean {
-    return result && typeof result === 'object' && result.jsonrpc === '2.0' && result.error;
-  }
-
-  private detectXverse(): boolean {
+    // 3) Xverse (several possible injections; we’ll use Sats-Connect to talk to it)
     const win = window as any;
-    
-    // Method 1: Direct xverse object
-    if (win.xverse) {
-      console.log('Found window.xverse');
-      if (win.xverse.providers?.bitcoin) {
-        this.wallet = win.xverse.providers.bitcoin;
-        this.walletType = 'xverse';
-        return true;
-      } else if (win.xverse.request || win.xverse.getAccounts || win.xverse.connect) {
-        this.wallet = win.xverse;
-        this.walletType = 'xverse';
-        return true;
-      }
+    if (
+      win.XverseProviders?.bitcoin ||
+      win.xverse?.providers?.bitcoin ||
+      win.xverse ||
+      win.btc ||
+      win.BitcoinProvider ||
+      Array.isArray(win.btc_providers) // WBIP004-style list
+    ) {
+      // We’ll use satsConnect request() for Xverse; no direct provider needed.
+      this.wallet = { __sats: true };
+      this.walletType = "xverse";
+      return;
     }
 
-    // Method 2: Generic btc provider
-    if (win.btc) {
-      console.log('Found window.btc');
-      this.wallet = win.btc;
-      this.walletType = 'xverse';
-      return true;
-    }
+    // Nothing found
+    this.wallet = null;
+    this.walletType = "";
+  }
 
-    // Method 3: BitcoinProvider
-    if (win.BitcoinProvider) {
-      console.log('Found window.BitcoinProvider');
-      this.wallet = win.BitcoinProvider;
-      this.walletType = 'xverse';
-      return true;
-    }
+  private satToBtc(n: number | string): number {
+    const s = typeof n === "string" ? parseInt(n, 10) : n;
+    return s / 100_000_000;
+  }
 
-    // Method 4: bitcoin provider
-    if (win.bitcoin) {
-      console.log('Found window.bitcoin');
-      this.wallet = win.bitcoin;
-      this.walletType = 'xverse';
-      return true;
-    }
-
-    // Method 5: XverseProviders
-    if (win.XverseProviders?.bitcoin) {
-      console.log('Found window.XverseProviders.bitcoin');
-      this.wallet = win.XverseProviders.bitcoin;
-      this.walletType = 'xverse';
-      return true;
-    }
-
-    // Method 6: Check for any object that looks like a Bitcoin wallet
-    const possibleWallets = ['xverse', 'btc', 'bitcoin', 'BitcoinProvider'];
-    for (const key of possibleWallets) {
-      if (win[key] && typeof win[key] === 'object') {
-        const obj = win[key];
-        if (obj.request || obj.getAccounts || obj.connect || obj.sendBitcoin || obj.sendTransfer) {
-          console.log(`Found potential Bitcoin wallet at window.${key}`);
-          this.wallet = obj;
-          this.walletType = 'xverse';
-          return true;
-        }
-      }
-    }
-
-    return false;
+  private btcToSat(n: number): number {
+    // avoid floating error
+    return Math.round(n * 100_000_000);
   }
 
   async connect(): Promise<BitcoinWallet> {
     if (!this.wallet) {
-      throw new Error('No Bitcoin wallet detected')
+      throw new Error("No Bitcoin wallet detected");
     }
 
     try {
-      let address: string
-      let publicKey: string
+      if (this.walletType === "unisat") {
+        // Must be user-initiated click per Unisat guidelines
+        const accounts: string[] = await this.wallet.requestAccounts();
+        const address = accounts?.[0];
+        if (!address) throw new Error("Unisat returned no address");
+        const publicKey: string = await this.wallet.getPublicKey();
+        this.connectedPaymentAddr = address;
+        this.connectedPubKey = publicKey;
 
-      if (this.walletType === 'unisat') {
-        const accounts = await this.wallet.requestAccounts()
-        address = accounts[0]
-        publicKey = await this.wallet.getPublicKey()
-      } else if (this.walletType === 'xverse') {
-        console.log('Connecting to Xverse wallet...');
-        console.log('Wallet object methods:', Object.getOwnPropertyNames(this.wallet));
-        
-        let accounts: any
-        
-        // Try multiple connection methods for Xverse
-        try {
-          // Method 1: Try direct function calls first (no parameters)
-          if (typeof this.wallet.getAccounts === 'function') {
-            console.log('Trying wallet.getAccounts()');
-            try {
-              accounts = await this.wallet.getAccounts();
-              if (accounts && !this.isJsonRpcError(accounts)) {
-                console.log('Success with getAccounts()');
-              }
-            } catch (e) {
-              console.log('getAccounts() failed:', e);
-            }
-          }
-          
-          if (!accounts || this.isJsonRpcError(accounts)) {
-            if (typeof this.wallet.requestAccounts === 'function') {
-              console.log('Trying wallet.requestAccounts()');
-              try {
-                accounts = await this.wallet.requestAccounts();
-                if (accounts && !this.isJsonRpcError(accounts)) {
-                  console.log('Success with requestAccounts()');
-                }
-              } catch (e) {
-                console.log('requestAccounts() failed:', e);
-              }
-            }
-          }
-          
-          // Method 2: Try request() with no parameters (most likely to work)
-          if ((!accounts || this.isJsonRpcError(accounts)) && typeof this.wallet.request === 'function') {
-            console.log('Trying wallet.request("getAccounts") with no parameters');
-            try {
-              accounts = await this.wallet.request('getAccounts');
-              if (accounts && !this.isJsonRpcError(accounts)) {
-                console.log('Success with request("getAccounts") no params');
-              }
-            } catch (e) {
-              console.log('request("getAccounts") no params failed:', e);
-            }
-          }
-          
-          // Method 3: Try request() with empty array
-          if ((!accounts || this.isJsonRpcError(accounts)) && typeof this.wallet.request === 'function') {
-            console.log('Trying wallet.request("getAccounts", [])');
-            try {
-              accounts = await this.wallet.request('getAccounts', []);
-              if (accounts && !this.isJsonRpcError(accounts)) {
-                console.log('Success with request("getAccounts", [])');
-              }
-            } catch (e) {
-              console.log('request("getAccounts", []) failed:', e);
-            }
-          }
-          
-          // Method 4: Try requestAccounts with no parameters
-          if ((!accounts || this.isJsonRpcError(accounts)) && typeof this.wallet.request === 'function') {
-            console.log('Trying wallet.request("requestAccounts") with no parameters');
-            try {
-              accounts = await this.wallet.request('requestAccounts');
-              if (accounts && !this.isJsonRpcError(accounts)) {
-                console.log('Success with request("requestAccounts") no params');
-              }
-            } catch (e) {
-              console.log('request("requestAccounts") no params failed:', e);
-            }
-          }
-          
-          // Method 5: Try connect()
-          if ((!accounts || this.isJsonRpcError(accounts)) && typeof this.wallet.connect === 'function') {
-            console.log('Trying wallet.connect()');
-            try {
-              const res = await this.wallet.connect();
-              accounts = res?.accounts || res;
-              if (accounts && !this.isJsonRpcError(accounts)) {
-                console.log('Success with connect()');
-              }
-            } catch (e) {
-              console.log('connect() failed:', e);
-            }
-          }
-          
-          // Method 6: Try other possible methods
-          if (!accounts || this.isJsonRpcError(accounts)) {
-            const possibleMethods = ['enable', 'authorize'];
-            for (const method of possibleMethods) {
-              if (typeof this.wallet[method] === 'function') {
-                console.log(`Trying wallet.${method}()`);
-                try {
-                  const result = await this.wallet[method]();
-                  if (result && !this.isJsonRpcError(result)) {
-                    accounts = result.accounts || result;
-                    console.log(`Success with ${method}()`);
-                    break;
-                  }
-                } catch (e) {
-                  console.log(`Method ${method} failed:`, e);
-                }
-              }
-            }
-          }
-          
-          // Check if we got a JSON-RPC error
-          if (this.isJsonRpcError(accounts)) {
-            const errorCode = accounts.error?.code;
-            const errorMsg = accounts.error?.message || 'Unknown error';
-            console.error('JSON-RPC error from Xverse:', accounts.error);
-            
-            let userMessage = `Xverse connection failed: ${errorMsg}`;
-            
-            if (errorCode === -32602) {
-              userMessage = 'Xverse rejected the connection parameters. Please unlock your wallet and try again.';
-            } else if (errorCode === 4001) {
-              userMessage = 'Xverse connection was rejected. Please approve the connection request in your wallet.';
-            } else if (errorCode === 4100) {
-              userMessage = 'Xverse is not authorized. Please unlock your wallet and try again.';
-            }
-            
-            throw new Error(userMessage);
-          }
-          
-        } catch (error) {
-          console.error('All Xverse connection methods failed:', error);
-          throw new Error(`Xverse connection failed: ${error instanceof Error ? error.message : 'Unknown error'}. Please make sure Xverse is unlocked and try again.`);
-        }
-
-        console.log('Xverse accounts result:', accounts);
-        
-        // Handle different response formats from Xverse
-        let first: any = null;
-        
-        if (Array.isArray(accounts)) {
-          first = accounts[0];
-        } else if (accounts?.accounts && Array.isArray(accounts.accounts)) {
-          first = accounts.accounts[0];
-        } else if (accounts?.result && Array.isArray(accounts.result)) {
-          first = accounts.result[0];
-        } else if (accounts?.address) {
-          // Direct address in response
-          first = { address: accounts.address, publicKey: accounts.publicKey };
-        } else if (accounts) {
-          first = accounts;
-        }
-        
-        console.log('Extracted first account:', first);
-        
-        if (!first?.address) {
-          console.error('No address found in Xverse response:', accounts);
-          throw new Error('Xverse did not return an address. Please unlock the wallet and try again.')
-        }
-        
-        address = first.address;
-        publicKey = first.publicKey || first.address;
-      } else if (this.walletType === 'okx') {
-        const accounts = await this.wallet.requestAccounts()
-        address = accounts[0]
-        publicKey = accounts[0]
-      } else {
-        throw new Error('Unsupported wallet type')
+        return {
+          name: this.getWalletName(),
+          icon: this.getWalletIcon(),
+          isInstalled: true,
+          isConnected: true,
+          address,
+          publicKey,
+        };
       }
 
-      return {
-        name: this.getWalletName(),
-        icon: this.getWalletIcon(),
-        isInstalled: true,
-        isConnected: true,
-        address,
-        publicKey
+      if (this.walletType === "okx") {
+        // OKX supports both .connect() and .requestAccounts()
+        let address = "";
+        let publicKey = "";
+        if (typeof this.wallet.connect === "function") {
+          const res = await this.wallet.connect();
+          address = res?.address;
+          publicKey = res?.publicKey || address;
+        } else if (typeof this.wallet.requestAccounts === "function") {
+          const accounts: string[] = await this.wallet.requestAccounts();
+          address = accounts?.[0];
+          publicKey = await this.wallet.getPublicKey();
+        } else {
+          const accounts: string[] = await this.wallet.getAccounts();
+          address = accounts?.[0];
+          publicKey = await this.wallet.getPublicKey();
+        }
+        if (!address) throw new Error("OKX returned no address");
+        this.connectedPaymentAddr = address;
+        this.connectedPubKey = publicKey;
+
+        return {
+          name: this.getWalletName(),
+          icon: this.getWalletIcon(),
+          isInstalled: true,
+          isConnected: true,
+          address,
+          publicKey,
+        };
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      throw new Error(`Failed to connect Bitcoin wallet: ${message}`)
+
+      if (this.walletType === "xverse") {
+        // ✅ Correct modern flow with Sats-Connect: wallet_connect
+        const resp = await satsRequest("wallet_connect", {
+          addresses: [AddressPurpose.Payment, AddressPurpose.Ordinals],
+          // message and network are optional; add if you want:
+          // message: "Connect to My Cool App",
+          // network: "Mainnet" | "Testnet" | "Signet" | "Regtest"
+        });
+
+        if (resp.status !== "success") {
+          const err = resp.error;
+          // Map common error codes for better DX
+          if (err?.code === RpcErrorCode.USER_REJECTION) {
+            throw new Error("User rejected the connection request in Xverse.");
+          }
+          throw new Error(err?.message || "Xverse connection failed.");
+        }
+
+        const addrs = resp.result?.addresses || [];
+        const payment = addrs.find((a: any) => a.purpose === AddressPurpose.Payment) || addrs[0];
+        if (!payment?.address) throw new Error("Xverse did not return a payment address.");
+
+        this.connectedPaymentAddr = payment.address;
+        this.connectedPubKey = payment.publicKey || payment.address;
+
+        return {
+          name: this.getWalletName(),
+          icon: this.getWalletIcon(),
+          isInstalled: true,
+          isConnected: true,
+          address: this.connectedPaymentAddr,
+          publicKey: this.connectedPubKey,
+        };
+      }
+
+      throw new Error("Unsupported wallet type");
+    } catch (e: any) {
+      throw new Error(`Failed to connect Bitcoin wallet: ${e?.message || String(e)}`);
     }
   }
 
   async sendTransaction(params: BitcoinTransactionParams): Promise<string> {
-    if (!this.wallet) {
-      throw new Error('Bitcoin wallet not connected')
+    if (!this.wallet || !this.walletType) {
+      throw new Error("Bitcoin wallet not connected");
     }
+    const satoshis = this.btcToSat(params.amount);
 
     try {
-      // Convert BTC to satoshis
-      const satoshis = Math.floor(params.amount * 100000000)
-
-      let txHash: string
-
-      if (this.walletType === 'unisat') {
-        txHash = await this.wallet.sendBitcoin(params.to, satoshis)
-      } else if (this.walletType === 'xverse') {
-        // Prefer request('sendTransfer') if supported, else try provider-specific methods
-        if (typeof this.wallet.request === 'function') {
-          let response: any
-          try {
-            response = await this.wallet.request('sendTransfer', {
-              recipients: [{ address: params.to, amount: satoshis }]
-            })
-          } catch (_e: any) {
-            response = await this.wallet.request({ method: 'sendTransfer', params: [{ recipients: [{ address: params.to, amount: satoshis }] }] })
-          }
-          txHash = response?.txid || response?.result || response
-        } else if (typeof this.wallet.sendBitcoin === 'function') {
-          const response = await this.wallet.sendBitcoin({ to: params.to, amount: satoshis })
-          txHash = response.txid || response
-        } else if (typeof this.wallet.sendTransfer === 'function') {
-          const response = await this.wallet.sendTransfer({ recipients: [{ address: params.to, amount: satoshis }] })
-          txHash = response?.txid || response
-        } else {
-          throw new Error('Xverse provider does not support sending via this API')
-        }
-      } else if (this.walletType === 'okx') {
-        const response = await this.wallet.sendBitcoin({
-          to: params.to,
-          amount: satoshis
-        })
-        txHash = response.txid
-      } else {
-        throw new Error('Unsupported wallet type')
+      if (this.walletType === "unisat") {
+        // Unisat: sendBitcoin(to, satoshis, { feeRate? })
+        const txid: string = await this.wallet.sendBitcoin(params.to, satoshis, {
+          feeRate: params.feeRate,
+        });
+        return txid;
       }
 
-      return txHash
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      throw new Error(`Bitcoin transaction failed: ${message}`)
+      if (this.walletType === "okx") {
+        // OKX: sendBitcoin({ to, amount, feeRate? }) OR .send()
+        if (typeof this.wallet.sendBitcoin === "function") {
+          const res = await this.wallet.sendBitcoin(params.to, satoshis, {
+            feeRate: params.feeRate,
+          });
+          // Some SDKs return string, some { txid }
+          return res?.txid || res;
+        }
+        if (typeof this.wallet.send === "function") {
+          const res = await this.wallet.send({
+            from: this.connectedPaymentAddr,
+            to: params.to,
+            value: (params.amount).toString(), // BTC string
+            satBytes: params.feeRate?.toString(),
+          });
+          return res?.txhash;
+        }
+        throw new Error("OKX provider does not support sendBitcoin/send");
+      }
+
+      if (this.walletType === "xverse") {
+        // ✅ Sats-Connect sendTransfer, amount in satoshis
+        const resp = await satsRequest("sendTransfer", {
+          recipients: [{ address: params.to, amount: satoshis }],
+        });
+        if (resp.status !== "success") {
+          const err = resp.error;
+          if (err?.code === RpcErrorCode.USER_REJECTION) {
+            throw new Error("User rejected the BTC transfer in Xverse.");
+          }
+          throw new Error(err?.message || "Xverse sendTransfer failed.");
+        }
+        return resp.result?.txid;
+      }
+
+      throw new Error("Unsupported wallet type");
+    } catch (e: any) {
+      throw new Error(`Bitcoin transaction failed: ${e?.message || String(e)}`);
     }
   }
 
   async getBalance(): Promise<number> {
-    if (!this.wallet) {
-      throw new Error('Bitcoin wallet not connected')
+    if (!this.wallet || !this.walletType) {
+      throw new Error("Bitcoin wallet not connected");
     }
 
     try {
-      let balance: number
-
-      if (this.walletType === 'unisat') {
-        balance = await this.wallet.getBalance()
-      } else if (this.walletType === 'xverse') {
-        const response = await this.wallet.request('getBalance')
-        balance = response.total
-      } else if (this.walletType === 'okx') {
-        const response = await this.wallet.getBalance()
-        balance = response.confirmed
-      } else {
-        throw new Error('Unsupported wallet type')
+      if (this.walletType === "unisat") {
+        const res = await this.wallet.getBalance(); // { confirmed, unconfirmed, total }
+        return this.satToBtc(res?.total ?? 0);
       }
 
-      // Convert satoshis to BTC
-      return balance / 100000000
-    } catch (error) {
-      throw new Error(`Failed to get balance: ${error}`)
+      if (this.walletType === "okx") {
+        const res = await this.wallet.getBalance(); // { confirmed, unconfirmed, total }
+        return this.satToBtc(res?.total ?? 0);
+      }
+
+      if (this.walletType === "xverse") {
+        // ✅ Sats-Connect getBalance needs no params; returns strings
+        const resp = await satsRequest("getBalance", undefined);
+        if (resp.status !== "success") {
+          throw new Error(resp.error?.message || "Xverse getBalance failed.");
+        }
+        const total = resp.result?.total ?? "0";
+        return this.satToBtc(total);
+      }
+
+      throw new Error("Unsupported wallet type");
+    } catch (e: any) {
+      throw new Error(`Failed to get balance: ${e?.message || String(e)}`);
     }
   }
 
   validateAddress(address: string): boolean {
-    // Basic Bitcoin address validation
-    const btcAddressRegex = /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$|^bc1[a-z0-9]{39,59}$|^tb1[a-z0-9]{39,59}$/
-    return btcAddressRegex.test(address)
+    // Bech32 (bc1..., tb1...) & legacy P2PKH/P2SH
+    const btcAddressRegex =
+      /^(bc1[0-9a-z]{25,62}|tb1[0-9a-z]{25,62}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
+    return btcAddressRegex.test(address);
   }
 
   private getWalletName(): string {
     switch (this.walletType) {
-      case 'unisat': return 'Unisat'
-      case 'xverse': return 'Xverse'
-      case 'okx': return 'OKX'
-      default: return 'Bitcoin Wallet'
+      case "unisat":
+        return "Unisat";
+      case "xverse":
+        return "Xverse";
+      case "okx":
+        return "OKX";
+      default:
+        return "Bitcoin Wallet";
     }
   }
 
   private getWalletIcon(): string {
     switch (this.walletType) {
-      case 'unisat': return '🟠'
-      case 'xverse': return '🟣'
-      case 'okx': return '🔵'
-      default: return '🟠'
+      case "unisat":
+        return "🟠";
+      case "xverse":
+        return "🟣";
+      case "okx":
+        return "🔵";
+      default:
+        return "🟠";
     }
   }
 
   isWalletInstalled(): boolean {
-    return this.wallet !== null
+    return this.wallet !== null;
   }
 
-  getWalletType(): string {
-    return this.walletType
+  getWalletType(): WalletType {
+    return this.walletType;
   }
 }
 
-// Global Bitcoin wallet interfaces
+// Global decls
 declare global {
   interface Window {
-    unisat?: any
-    xverse?: any
-    okxwallet?: {
-      bitcoin?: any
-    }
+    unisat?: any;
+    xverse?: any;
+    okxwallet?: { bitcoin?: any };
   }
 }
-
-
-
-

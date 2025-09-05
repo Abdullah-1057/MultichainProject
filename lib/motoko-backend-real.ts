@@ -435,12 +435,24 @@ export class MotokoBackendService {
 
   // Helper function to map Motoko status to TypeScript status
   private mapMotokoStatus(motokoStatus: any): TransactionStatus {
+    console.log('Mapping status:', motokoStatus);
+    
+    if (!motokoStatus) return 'PENDING';
+    
+    // Handle variant format: {PENDING: null} or {PAID: null}
     if (motokoStatus.PENDING) return 'PENDING';
     if (motokoStatus.CONFIRMED) return 'CONFIRMED';
     if (motokoStatus.REWARD_SENT) return 'REWARD_SENT';
     if (motokoStatus.FAILED) return 'FAILED';
     if (motokoStatus.EXPIRED) return 'EXPIRED';
     if (motokoStatus.PAID) return 'PAID';
+    
+    // Handle string format
+    if (typeof motokoStatus === 'string') {
+      return motokoStatus as TransactionStatus;
+    }
+    
+    console.warn('Unknown status format:', motokoStatus);
     return 'PENDING';
   }
 
@@ -450,17 +462,18 @@ export class MotokoBackendService {
     
     if (!motokoChain) return 'ETH';
     
-    // Handle different data formats
-    if (typeof motokoChain === 'string') {
-      return motokoChain as ChainType;
-    }
-    
+    // Handle variant format: {ETH: null}, {SOL: null}, {BTC: null}
     if (motokoChain.ETH) return 'ETH';
     if (motokoChain.BTC) return 'BTC';
     if (motokoChain.SOL) return 'SOL';
     if (motokoChain.POLYGON) return 'POLYGON';
     if (motokoChain.ARBITRUM) return 'ARBITRUM';
     if (motokoChain.OPTIMISM) return 'OPTIMISM';
+    
+    // Handle string format
+    if (typeof motokoChain === 'string') {
+      return motokoChain as ChainType;
+    }
     
     // Handle array format [chain, null]
     if (Array.isArray(motokoChain) && motokoChain.length > 0) {
@@ -481,21 +494,21 @@ export class MotokoBackendService {
     
     console.log('Mapping transaction data:', motokoTx);
     
-    // Handle different data formats - check if it's already in the expected format
-    const id = motokoTx.id || motokoTx[0]?.id;
-    const userAddress = motokoTx.userAddress || motokoTx[0]?.userAddress;
-    const depositAddress = motokoTx.depositAddress || motokoTx[0]?.depositAddress;
-    const chain = motokoTx.chain || motokoTx[0]?.chain;
-    const amount = motokoTx.amount || motokoTx[0]?.amount;
-    const status = motokoTx.status || motokoTx[0]?.status;
-    const createdAt = motokoTx.createdAt || motokoTx[0]?.createdAt;
-    const confirmedAt = motokoTx.confirmedAt || motokoTx[0]?.confirmedAt;
-    const rewardSentAt = motokoTx.rewardSentAt || motokoTx[0]?.rewardSentAt;
-    const fundingTxHash = motokoTx.fundingTxHash || motokoTx[0]?.fundingTxHash;
-    const rewardTxHash = motokoTx.rewardTxHash || motokoTx[0]?.rewardTxHash;
-    const explorerUrl = motokoTx.explorerUrl || motokoTx[0]?.explorerUrl;
+    // The data is already in the correct format from the backend
+    const id = motokoTx.id;
+    const userAddress = motokoTx.userAddress;
+    const depositAddress = motokoTx.depositAddress;
+    const chain = motokoTx.chain;
+    const amount = motokoTx.amount;
+    const status = motokoTx.status;
+    const createdAt = motokoTx.createdAt;
+    const confirmedAt = motokoTx.confirmedAt;
+    const rewardSentAt = motokoTx.rewardSentAt;
+    const fundingTxHash = motokoTx.fundingTxHash;
+    const rewardTxHash = motokoTx.rewardTxHash;
+    const explorerUrl = motokoTx.explorerUrl;
     
-    return {
+    const mapped = {
       id: String(id || ''),
       userAddress: String(userAddress || ''),
       depositAddress: String(depositAddress || ''),
@@ -509,6 +522,9 @@ export class MotokoBackendService {
       rewardTxHash: rewardTxHash && rewardTxHash[0] ? String(rewardTxHash[0]) : undefined,
       explorerUrl: explorerUrl && explorerUrl[0] ? String(explorerUrl[0]) : undefined,
     };
+    
+    console.log('Mapped transaction:', mapped);
+    return mapped;
   }
 
   // Placeholder helpers

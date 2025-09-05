@@ -825,6 +825,7 @@ actor FormManager {
     #REWARD_SENT;
     #FAILED;
     #EXPIRED;
+    #PAID;
   };
 
   public type Transaction = {
@@ -1014,6 +1015,7 @@ actor FormManager {
     var newRewardSent = rewardSent;
     var newFailed = failed;
     var newExpired = expired;
+    var newPaid = 0; // Add paid counter
     var newTotalReward = totalReward;
 
     // Remove old status from stats if it exists
@@ -1029,6 +1031,7 @@ actor FormManager {
           };
           case (#FAILED) { newFailed -= 1 };
           case (#EXPIRED) { newExpired -= 1 };
+          case (#PAID) { newPaid -= 1 };
         };
       };
     };
@@ -1054,6 +1057,10 @@ actor FormManager {
       };
       case (#EXPIRED) {
         newExpired += 1;
+        if (oldStatus == null) { newTotal += 1 };
+      };
+      case (#PAID) {
+        newPaid += 1;
         if (oldStatus == null) { newTotal += 1 };
       };
     };
@@ -1410,6 +1417,31 @@ actor FormManager {
     userTransactions := HashMap.HashMap<Text, [TransactionId]>(0, Text.equal, Text.hash);
     nextTransactionId := 1;
     stats := (0, 0, 0, 0, 0, 0, 0.0);
+  };
+
+  // Mark transaction as paid
+  public func markAsPaid(transactionId : TransactionId) : async Result.Result<Text, Text> {
+    // Initialize storage if not already done
+    initializeStorage();
+
+    switch (transactions.get(transactionId)) {
+      case (null) {
+        #err("Transaction not found");
+      };
+      case (?transaction) {
+        if (transaction.status == #PAID) {
+          #err("Transaction is already marked as paid");
+        } else {
+          let updatedTransaction = {
+            transaction with status = #PAID;
+          };
+          transactions.put(transactionId, updatedTransaction);
+          updateStats(updatedTransaction, ?transaction.status);
+
+          #ok("Transaction marked as paid successfully");
+        };
+      };
+    };
   };
   //========================================
   // Data Persistence for Upgrades

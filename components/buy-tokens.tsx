@@ -291,12 +291,22 @@ export default function BuyTokens() {
           </CardHeader>
           <CardContent className="space-y-3">
             {connected ? (
-              <div className="flex items-center justify-between p-3 rounded-lg bg-slate-700/60 border border-slate-600">
-                <div>
-                  <div className="text-slate-200 text-sm">{connected.name}</div>
-                  <div className="font-mono text-xs text-slate-400">{connected.address}</div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-slate-700/60 border border-slate-600">
+                  <div>
+                    <div className="text-slate-200 text-sm">{connected.name}</div>
+                    <div className="font-mono text-xs text-slate-400">{connected.address}</div>
+                  </div>
+                  <Badge className="bg-green-500 text-white">Connected</Badge>
                 </div>
-                <Badge className="bg-green-500 text-white">Connected</Badge>
+                <Button 
+                  onClick={() => setConnected(null)} 
+                  variant="outline" 
+                  size="sm"
+                  className="border-red-500/40 text-red-300 hover:bg-red-500/10"
+                >
+                  Disconnect Wallet
+                </Button>
               </div>
             ) : (
               <div className="space-y-2">

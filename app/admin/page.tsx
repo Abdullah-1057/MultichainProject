@@ -12,7 +12,7 @@ import { ExternalLink, Loader2, RefreshCw, Download } from 'lucide-react';
 import { MotokoBackendService, Transaction } from '@/lib/motoko-backend-real';
 
 const CHAINS = ['ALL', 'ETH', 'BTC', 'SOL', 'POLYGON', 'ARBITRUM', 'OPTIMISM'] as const;
-const STATUSES = ['ALL', 'PENDING', 'CONFIRMED', 'REWARD_SENT', 'FAILED', 'EXPIRED'] as const;
+const STATUSES = ['ALL', 'PENDING', 'CONFIRMED', 'REWARD_SENT', 'FAILED', 'EXPIRED', 'PAID'] as const;
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -67,6 +67,23 @@ export default function AdminPage() {
   useEffect(() => {
     if (page > totalPages) setPage(1);
   }, [totalPages, page]);
+
+  const markAsPaid = async (transactionId: string) => {
+    try {
+      setLoading(true);
+      const result = await motoko.markAsPaid(transactionId);
+      if (result.success) {
+        await load(); // Refresh the data
+        alert('Transaction marked as paid successfully');
+      } else {
+        alert(`Failed to mark as paid: ${result.error}`);
+      }
+    } catch (error) {
+      alert(`Error: ${error}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const exportCSV = () => {
     const header = [
@@ -198,7 +215,7 @@ export default function AdminPage() {
                         <TableCell>
                           <Badge variant="outline" className="border-slate-600 text-slate-300">{tx.chain}</Badge>
                         </TableCell>
-                        <TableCell className="text-slate-200">${'{'}tx.amount{'}'}</TableCell>
+                        <TableCell className="text-slate-200">${tx.amount.toFixed(2)}</TableCell>
                         <TableCell className="font-mono text-xs text-slate-300 truncate max-w-[160px]">{tx.userAddress}</TableCell>
                         <TableCell className="font-mono text-xs text-slate-300 truncate max-w-[160px]">{tx.depositAddress}</TableCell>
                         <TableCell>
@@ -217,25 +234,38 @@ export default function AdminPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {String(tx.id).startsWith('ph_') ? (
-                            <Button
-                              size="sm"
-                              onClick={async () => {
-                                setLoading(true);
-                                const res = await motoko.persistPlaceholderToCanister(tx);
-                                await load();
-                                setLoading(false);
-                                if (!res.success) {
-                                  alert(`Persist failed: ${res.error}`);
-                                }
-                              }}
-                              className="h-7 px-3"
-                            >
-                              Save to Canister
-                            </Button>
-                          ) : (
-                            <span className="text-slate-500 text-xs">—</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {String(tx.id).startsWith('ph_') ? (
+                              <Button
+                                size="sm"
+                                onClick={async () => {
+                                  setLoading(true);
+                                  const res = await motoko.persistPlaceholderToCanister(tx);
+                                  await load();
+                                  setLoading(false);
+                                  if (!res.success) {
+                                    alert(`Persist failed: ${res.error}`);
+                                  }
+                                }}
+                                className="h-7 px-3"
+                              >
+                                Save to Canister
+                              </Button>
+                            ) : tx.status !== 'PAID' ? (
+                              <Button
+                                size="sm"
+                                onClick={() => markAsPaid(tx.id)}
+                                disabled={loading}
+                                className="h-7 px-3 bg-blue-600 hover:bg-blue-700 text-white"
+                              >
+                                Mark as Paid
+                              </Button>
+                            ) : (
+                              <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/40">
+                                Paid
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

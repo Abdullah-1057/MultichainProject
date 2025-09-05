@@ -21,7 +21,7 @@ export interface Transaction {
 
 export type ChainType = 'ETH' | 'BTC' | 'SOL' | 'POLYGON' | 'ARBITRUM' | 'OPTIMISM';
 
-export type TransactionStatus = 'PENDING' | 'CONFIRMED' | 'REWARD_SENT' | 'FAILED' | 'EXPIRED';
+export type TransactionStatus = 'PENDING' | 'CONFIRMED' | 'REWARD_SENT' | 'FAILED' | 'EXPIRED' | 'PAID';
 
 export interface FundingRequest {
   userAddress: string;
@@ -362,6 +362,29 @@ export class MotokoBackendService {
     }
   }
 
+  // Mark transaction as paid
+  async markAsPaid(transactionId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!this.actor) {
+        throw new Error('Canister not initialized');
+      }
+
+      const result = await this.actor.markAsPaid(transactionId);
+      
+      if (result.ok) {
+        return { success: true };
+      } else {
+        return { success: false, error: result.err };
+      }
+    } catch (error) {
+      console.error('Error marking transaction as paid:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
   // Helper function to map Motoko status to TypeScript status
   private mapMotokoStatus(motokoStatus: any): TransactionStatus {
     if (motokoStatus.PENDING) return 'PENDING';
@@ -369,6 +392,7 @@ export class MotokoBackendService {
     if (motokoStatus.REWARD_SENT) return 'REWARD_SENT';
     if (motokoStatus.FAILED) return 'FAILED';
     if (motokoStatus.EXPIRED) return 'EXPIRED';
+    if (motokoStatus.PAID) return 'PAID';
     return 'PENDING';
   }
 
@@ -393,11 +417,11 @@ export class MotokoBackendService {
       amount: Number(motokoTx.amount),
       status: this.mapMotokoStatus(motokoTx.status),
       createdAt: Number(motokoTx.createdAt),
-      confirmedAt: motokoTx.confirmedAt?.[0] ? Number(motokoTx.confirmedAt[0]) : undefined,
-      rewardSentAt: motokoTx.rewardSentAt?.[0] ? Number(motokoTx.rewardSentAt[0]) : undefined,
-      fundingTxHash: motokoTx.fundingTxHash?.[0],
-      rewardTxHash: motokoTx.rewardTxHash?.[0],
-      explorerUrl: motokoTx.explorerUrl?.[0],
+      confirmedAt: motokoTx.confirmedAt && motokoTx.confirmedAt[0] ? Number(motokoTx.confirmedAt[0]) : undefined,
+      rewardSentAt: motokoTx.rewardSentAt && motokoTx.rewardSentAt[0] ? Number(motokoTx.rewardSentAt[0]) : undefined,
+      fundingTxHash: motokoTx.fundingTxHash && motokoTx.fundingTxHash[0] ? motokoTx.fundingTxHash[0] : undefined,
+      rewardTxHash: motokoTx.rewardTxHash && motokoTx.rewardTxHash[0] ? motokoTx.rewardTxHash[0] : undefined,
+      explorerUrl: motokoTx.explorerUrl && motokoTx.explorerUrl[0] ? motokoTx.explorerUrl[0] : undefined,
     };
   }
 

@@ -32,6 +32,7 @@ const STATUS_ICONS = {
   REWARD_SENT: <Coins className="h-4 w-4 text-emerald-400" />,
   FAILED: <XCircle className="h-4 w-4 text-red-400" />,
   EXPIRED: <AlertCircle className="h-4 w-4 text-orange-400" />,
+  PAID: <CheckCircle className="h-4 w-4 text-blue-400" />,
 };
 
 const STATUS_COLORS = {
@@ -40,6 +41,7 @@ const STATUS_COLORS = {
   REWARD_SENT: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
   FAILED: 'bg-red-500/20 text-red-300 border-red-500/40',
   EXPIRED: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
+  PAID: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
 };
 
 const CHAIN_ICONS = {
@@ -297,7 +299,10 @@ export default function MyTokensSection({ userAddress, className = '' }: MyToken
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => window.open(getExplorerUrl(tx.chain, tx.fundingTxHash), '_blank')}
+                              onClick={() => {
+                                const url = getExplorerUrl(tx.chain, tx.fundingTxHash);
+                                if (url) window.open(url, '_blank');
+                              }}
                               className="h-6 w-6 p-0 text-slate-400 hover:text-slate-200"
                               title="View on Explorer"
                             >

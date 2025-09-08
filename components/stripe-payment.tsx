@@ -16,7 +16,9 @@ import {
   PaymentElement,
 } from '@stripe/react-stripe-js';
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY 
+  ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
+  : null;
 
 interface StripePaymentProps {
   amount: number;
@@ -173,8 +175,16 @@ const StripePayment: React.FC<StripePaymentProps> = ({
   disabled = false,
 }) => {
   const [clientSecret, setClientSecret] = useState<string>('');
+  const [stripeError, setStripeError] = useState<string>('');
 
   React.useEffect(() => {
+    // Check if Stripe is properly configured
+    if (!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) {
+      setStripeError('Stripe is not configured. Please set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY environment variable.');
+      onPaymentError('Stripe configuration missing');
+      return;
+    }
+
     // Create payment intent when component mounts
     const createPaymentIntent = async () => {
       try {
@@ -193,11 +203,26 @@ const StripePayment: React.FC<StripePaymentProps> = ({
           }),
         });
 
-        const { clientSecret: secret } = await response.json();
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const { clientSecret: secret, error: apiError } = await response.json();
+        
+        if (apiError) {
+          throw new Error(apiError);
+        }
+
+        if (!secret) {
+          throw new Error('No client secret returned from API');
+        }
+
         setClientSecret(secret);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error creating payment intent:', error);
-        onPaymentError('Failed to initialize payment');
+        const errorMessage = error.message || 'Failed to initialize payment';
+        setStripeError(errorMessage);
+        onPaymentError(errorMessage);
       }
     };
 
@@ -205,6 +230,30 @@ const StripePayment: React.FC<StripePaymentProps> = ({
       createPaymentIntent();
     }
   }, [amount, onPaymentError]);
+
+  // Show error if Stripe is not configured
+  if (stripeError) {
+    return (
+      <Card className="bg-slate-800/70 border-slate-700">
+        <CardContent className="p-6">
+          <div className="text-center space-y-2">
+            <XCircle className="h-8 w-8 text-red-400 mx-auto" />
+            <p className="text-red-300 font-medium">Stripe Payment Initialization Failed</p>
+            <p className="text-slate-400 text-sm">{stripeError}</p>
+            <div className="text-xs text-slate-500 mt-2">
+              <p>To fix this issue:</p>
+              <ol className="list-decimal list-inside mt-1 space-y-1">
+                <li>Create a .env.local file in your project root</li>
+                <li>Add: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_your_key_here</li>
+                <li>Add: STRIPE_SECRET_KEY=sk_test_your_key_here</li>
+                <li>Restart the development server</li>
+              </ol>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!clientSecret) {
     return (

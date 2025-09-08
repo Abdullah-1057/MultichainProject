@@ -13,7 +13,9 @@ import {
   PaymentRequestButtonElement,
 } from '@stripe/react-stripe-js';
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY 
+  ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
+  : null;
 
 interface ApplePayPaymentProps {
   amount: number;
@@ -59,12 +61,24 @@ const ApplePayForm: React.FC<ApplePayFormProps> = ({
       requestPayerEmail: true,
     });
 
-    // Check if Apple Pay is available
+    // Check if Apple Pay is available with better error handling
     pr.canMakePayment().then((result) => {
+      console.log('Apple Pay availability check:', result);
       if (result && result.applePay) {
         setCanMakePayment(true);
         setPaymentRequest(pr);
+      } else {
+        console.log('Apple Pay not available. Result:', result);
+        // Check for specific reasons why Apple Pay might not be available
+        const userAgent = navigator.userAgent;
+        const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
+        const isMac = /Mac/.test(userAgent);
+        const isIOS = /iPhone|iPad|iPod/.test(userAgent);
+        
+        console.log('Browser detection:', { userAgent, isSafari, isMac, isIOS });
       }
+    }).catch((error) => {
+      console.error('Error checking Apple Pay availability:', error);
     });
 
     // Handle payment method
@@ -128,15 +142,49 @@ const ApplePayForm: React.FC<ApplePayFormProps> = ({
   }, [stripe, elements, amount, onPaymentSuccess, onPaymentError, disabled]);
 
   if (!canMakePayment) {
+    // Detect the current environment for better error messages
+    const userAgent = navigator.userAgent;
+    const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
+    const isMac = /Mac/.test(userAgent);
+    const isIOS = /iPhone|iPad|iPod/.test(userAgent);
+    const isChrome = /Chrome/.test(userAgent);
+    const isFirefox = /Firefox/.test(userAgent);
+
     return (
       <Card className="bg-slate-800/70 border-slate-700">
         <CardContent className="p-6">
-          <div className="text-center space-y-2">
+          <div className="text-center space-y-4">
             <Apple className="h-8 w-8 text-slate-400 mx-auto" />
-            <p className="text-slate-400">Apple Pay is not available on this device</p>
-            <p className="text-xs text-slate-500">
-              Make sure you're using Safari on iOS/macOS with Apple Pay set up
-            </p>
+            <div>
+              <p className="text-slate-400 font-medium">Apple Pay is not available</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Current browser: {isSafari ? 'Safari' : isChrome ? 'Chrome' : isFirefox ? 'Firefox' : 'Other'} on {isMac ? 'macOS' : isIOS ? 'iOS' : 'Unknown OS'}
+              </p>
+            </div>
+            
+            <div className="text-left text-xs text-slate-500 space-y-2">
+              <p className="font-medium text-slate-400">Requirements for Apple Pay:</p>
+              <ul className="list-disc list-inside space-y-1 ml-2">
+                <li>Use Safari browser (not Chrome, Firefox, or Edge)</li>
+                <li>macOS 10.12+ with Apple Pay set up in Wallet app</li>
+                <li>Valid payment method added to Apple Wallet</li>
+                <li>HTTPS connection (required for Apple Pay)</li>
+              </ul>
+              
+              <div className="mt-3 p-3 bg-slate-700/50 rounded-lg">
+                <p className="font-medium text-slate-300 mb-2">For Mac users:</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Open Safari (not Chrome/Firefox)</li>
+                  <li>Go to System Preferences → Wallet & Apple Pay</li>
+                  <li>Add a credit/debit card</li>
+                  <li>Refresh this page in Safari</li>
+                </ol>
+              </div>
+              
+              <div className="mt-2 text-center">
+                <p className="text-slate-400">Alternative: Use Stripe Credit Card payment instead</p>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -212,8 +260,16 @@ const ApplePayPayment: React.FC<ApplePayPaymentProps> = ({
   disabled = false,
 }) => {
   const [clientSecret, setClientSecret] = useState<string>('');
+  const [stripeError, setStripeError] = useState<string>('');
 
   useEffect(() => {
+    // Check if Stripe is properly configured
+    if (!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) {
+      setStripeError('Stripe is not configured. Please set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY environment variable.');
+      onPaymentError('Stripe configuration missing');
+      return;
+    }
+
     // Create payment intent when component mounts
     const createPaymentIntent = async () => {
       try {
@@ -232,11 +288,26 @@ const ApplePayPayment: React.FC<ApplePayPaymentProps> = ({
           }),
         });
 
-        const { clientSecret: secret } = await response.json();
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const { clientSecret: secret, error: apiError } = await response.json();
+        
+        if (apiError) {
+          throw new Error(apiError);
+        }
+
+        if (!secret) {
+          throw new Error('No client secret returned from API');
+        }
+
         setClientSecret(secret);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error creating payment intent:', error);
-        onPaymentError('Failed to initialize Apple Pay');
+        const errorMessage = error.message || 'Failed to initialize Apple Pay';
+        setStripeError(errorMessage);
+        onPaymentError(errorMessage);
       }
     };
 
@@ -244,6 +315,30 @@ const ApplePayPayment: React.FC<ApplePayPaymentProps> = ({
       createPaymentIntent();
     }
   }, [amount, onPaymentError]);
+
+  // Show error if Stripe is not configured
+  if (stripeError) {
+    return (
+      <Card className="bg-slate-800/70 border-slate-700">
+        <CardContent className="p-6">
+          <div className="text-center space-y-2">
+            <XCircle className="h-8 w-8 text-red-400 mx-auto" />
+            <p className="text-red-300 font-medium">Apple Pay Initialization Failed</p>
+            <p className="text-slate-400 text-sm">{stripeError}</p>
+            <div className="text-xs text-slate-500 mt-2">
+              <p>To fix this issue:</p>
+              <ol className="list-decimal list-inside mt-1 space-y-1">
+                <li>Create a .env.local file in your project root</li>
+                <li>Add: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_your_key_here</li>
+                <li>Add: STRIPE_SECRET_KEY=sk_test_your_key_here</li>
+                <li>Restart the development server</li>
+              </ol>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!clientSecret) {
     return (

@@ -1,0 +1,9 @@
+{
+  "verificationCode": "CREO-2024-001",
+  "certificateId": "cert-creo-001",
+  "recipient": "John Doe",
+  "issueDate": "2024-01-15",
+  "issuer": "CREO Institute",
+  "verificationUrl": "http://localhost:3000/certificate-verification?code=CREO-2024-001",
+  "generatedAt": "2025-09-08T14:54:02.181Z"
+}

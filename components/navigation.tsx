@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Wallet, Settings, BarChart3, HelpCircle } from "lucide-react"
+import { Wallet, Settings, BarChart3, HelpCircle, Shield, Award, Download } from "lucide-react"
 
 export function Navigation() {
   return (
@@ -31,6 +31,27 @@ export function Navigation() {
             >
               <BarChart3 className="h-4 w-4 inline mr-1" />
               Analytics
+            </Link>
+            <Link 
+              href="/certificate-verification" 
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Shield className="h-4 w-4 inline mr-1" />
+              Verify Certificate
+            </Link>
+            <Link 
+              href="/certificate-purchase" 
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Award className="h-4 w-4 inline mr-1" />
+              Buy Certificate
+            </Link>
+            <Link 
+              href="/certificate-download" 
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Download className="h-4 w-4 inline mr-1" />
+              Download
             </Link>
             <Link 
               href="#features" 

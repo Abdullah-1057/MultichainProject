@@ -14,8 +14,10 @@ import { SolanaWalletManager } from '@/lib/solana-wallet';
 import { BitcoinWalletManager } from '@/lib/bitcoin-wallet';
 import MyTokensSection from './my-tokens-section';
 import ProductionPayment from './production-payment';
+import StripePayment from './stripe-payment';
+import ApplePayPayment from './apple-pay-payment';
 
-type ChainOption = 'ETH' | 'SOL' | 'BTC';
+type ChainOption = 'ETH' | 'SOL' | 'BTC' | 'STRIPE' | 'APPLE_PAY';
 
 interface ConnectedWallet {
   type: ChainOption;
@@ -27,6 +29,8 @@ const CHAIN_META: Record<ChainOption, { name: string; icon: string; hint: string
   ETH: { name: 'EVM (Ethereum compatible)', icon: '⟠', hint: 'MetaMask / Coinbase / OKX' },
   SOL: { name: 'Solana', icon: '◎', hint: 'Phantom / Solflare' },
   BTC: { name: 'Bitcoin', icon: '₿', hint: 'Unisat / Xverse / OKX' },
+  STRIPE: { name: 'Credit Card', icon: '💳', hint: 'Visa / Mastercard / Amex' },
+  APPLE_PAY: { name: 'Apple Pay', icon: '🍎', hint: 'Touch ID / Face ID / Passcode' },
 };
 
 type AttemptStatus = 'success' | 'failed' | 'rejected' | 'timeout';
@@ -55,6 +59,14 @@ export default function BuyTokens() {
   const [lastAttemptStatus, setLastAttemptStatus] = useState<AttemptStatus | null>(null);
   const [lastAttemptHash, setLastAttemptHash] = useState<string | null>(null);
 
+  // Stripe payment state
+  const [stripePaymentSuccess, setStripePaymentSuccess] = useState<string | null>(null);
+  const [stripePaymentError, setStripePaymentError] = useState<string | null>(null);
+
+  // Apple Pay payment state
+  const [applePayPaymentSuccess, setApplePayPaymentSuccess] = useState<string | null>(null);
+  const [applePayPaymentError, setApplePayPaymentError] = useState<string | null>(null);
+
   useEffect(() => {
     setStepError(null);
     setRequestError(null);
@@ -65,12 +77,19 @@ export default function BuyTokens() {
     setExpiresAt(null);
     setLastAttemptStatus(null);
     setLastAttemptHash(null);
+    setStripePaymentSuccess(null);
+    setStripePaymentError(null);
+    setApplePayPaymentSuccess(null);
+    setApplePayPaymentError(null);
     if (chain === 'BTC') detectBTCProviders();
   }, [chain]);
 
   const isReadyToRequest = useMemo(() => {
+    if (chain === 'STRIPE' || chain === 'APPLE_PAY') {
+      return !!amount && Number(amount) > 0;
+    }
     return !!connected && !!amount && Number(amount) > 0;
-  }, [connected, amount]);
+  }, [connected, amount, chain]);
 
   const detectBTCProviders = () => {
     if (typeof window === 'undefined') return;
@@ -422,6 +441,64 @@ export default function BuyTokens() {
     } catch {}
   };
 
+  // Stripe payment handlers
+  const handleStripePaymentSuccess = async (paymentIntentId: string) => {
+    setStripePaymentSuccess(paymentIntentId);
+    setStripePaymentError(null);
+    
+    // Create a transaction record in the backend
+    try {
+      const motoko = MotokoBackendService.getInstance();
+      const res = await motoko.requestDeposit({
+        userAddress: `stripe_${paymentIntentId}`, // Use payment intent ID as address for Stripe
+        chain: 'STRIPE',
+        amount: Number(amount),
+      });
+
+      if (res.success && res.data) {
+        setTransactionId(res.data.transactionId);
+        setLastTxId(res.data.transactionId);
+        console.log('Stripe payment successful, transaction recorded:', res.data);
+      }
+    } catch (error) {
+      console.error('Error recording Stripe payment:', error);
+    }
+  };
+
+  const handleStripePaymentError = (error: string) => {
+    setStripePaymentError(error);
+    setStripePaymentSuccess(null);
+  };
+
+  // Apple Pay payment handlers
+  const handleApplePayPaymentSuccess = async (paymentIntentId: string) => {
+    setApplePayPaymentSuccess(paymentIntentId);
+    setApplePayPaymentError(null);
+    
+    // Create a transaction record in the backend
+    try {
+      const motoko = MotokoBackendService.getInstance();
+      const res = await motoko.requestDeposit({
+        userAddress: `apple_pay_${paymentIntentId}`, // Use payment intent ID as address for Apple Pay
+        chain: 'APPLE_PAY',
+        amount: Number(amount),
+      });
+
+      if (res.success && res.data) {
+        setTransactionId(res.data.transactionId);
+        setLastTxId(res.data.transactionId);
+        console.log('Apple Pay payment successful, transaction recorded:', res.data);
+      }
+    } catch (error) {
+      console.error('Error recording Apple Pay payment:', error);
+    }
+  };
+
+  const handleApplePayPaymentError = (error: string) => {
+    setApplePayPaymentError(error);
+    setApplePayPaymentSuccess(null);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 p-4 md:p-8">
       <div className="max-w-3xl mx-auto space-y-6">
@@ -457,7 +534,7 @@ export default function BuyTokens() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(['ETH', 'SOL', 'BTC'] as ChainOption[]).map((key) => (
+                  {(['ETH', 'SOL', 'BTC', 'STRIPE', 'APPLE_PAY'] as ChainOption[]).map((key) => (
                     <SelectItem key={key} value={key}>
                       <div className="flex items-center gap-2">
                         <span>{CHAIN_META[key].icon}</span>
@@ -472,16 +549,47 @@ export default function BuyTokens() {
           </CardContent>
         </Card>
 
-        {/* Step 2: Connect Wallet */}
+        {/* Step 2: Connect Wallet or Payment Method */}
         <Card className="bg-slate-800/70 border-slate-700">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
-              <Wallet className="h-5 w-5" /> Connect Wallet
+              <Wallet className="h-5 w-5" /> 
+              {chain === 'STRIPE' ? 'Payment Method' : 'Connect Wallet'}
             </CardTitle>
-            <CardDescription className="text-slate-400">Connect a {CHAIN_META[chain].name} wallet.</CardDescription>
+            <CardDescription className="text-slate-400">
+              {chain === 'STRIPE' ? 'No wallet connection needed for credit card payments' : 
+               chain === 'APPLE_PAY' ? 'No wallet connection needed for Apple Pay' : 
+               `Connect a ${CHAIN_META[chain].name} wallet.`}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {connected ? (
+            {chain === 'STRIPE' ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-slate-700/60 border border-slate-600">
+                  <div>
+                    <div className="text-slate-200 text-sm">Credit Card Payment</div>
+                    <div className="text-slate-400 text-xs">Visa, Mastercard, American Express, and more</div>
+                  </div>
+                  <Badge className="bg-green-500 text-white">Ready</Badge>
+                </div>
+                <div className="text-xs text-slate-400">
+                  Payment will be processed securely through Stripe. No wallet connection required.
+                </div>
+              </div>
+            ) : chain === 'APPLE_PAY' ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-slate-700/60 border border-slate-600">
+                  <div>
+                    <div className="text-slate-200 text-sm">Apple Pay Payment</div>
+                    <div className="text-slate-400 text-xs">Touch ID, Face ID, or Passcode authentication</div>
+                  </div>
+                  <Badge className="bg-green-500 text-white">Ready</Badge>
+                </div>
+                <div className="text-xs text-slate-400">
+                  Payment will be processed securely through Apple Pay. No wallet connection required.
+                </div>
+              </div>
+            ) : connected ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 rounded-lg bg-slate-700/60 border border-slate-600">
                   <div>
@@ -536,29 +644,81 @@ export default function BuyTokens() {
           </CardContent>
         </Card>
 
-        {/* Step 3: Generate Deposit Address (stores tx in canister) */}
+        {/* Step 3: Generate Deposit Address or Payment */}
         <Card className="bg-slate-800/70 border-slate-700">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
-              <Shield className="h-5 w-5" /> Generate Deposit Details
+              <Shield className="h-5 w-5" /> 
+              {chain === 'STRIPE' ? 'Payment Processing' : 'Generate Deposit Details'}
             </CardTitle>
-            <CardDescription className="text-slate-400">Creates a transaction record in the canister and returns a deposit address.</CardDescription>
+            <CardDescription className="text-slate-400">
+              {chain === 'STRIPE' 
+                ? 'Process payment with Stripe and create transaction record.' 
+                : chain === 'APPLE_PAY'
+                ? 'Process payment with Apple Pay and create transaction record.'
+                : 'Creates a transaction record in the canister and returns a deposit address.'
+              }
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex gap-3">
-              <Button onClick={requestDeposit} disabled={!isReadyToRequest || isRequesting} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                {isRequesting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ScanLine className="h-4 w-4 mr-2" />}
-                Generate Deposit
-              </Button>
-              <Button onClick={createPurchaseAndStore} disabled={isRequesting || !amount} variant="outline" className="border-slate-600 text-slate-200 text-black">
-                {isRequesting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Create Purchase (Store)
-              </Button>
-            </div>
+            {chain === 'STRIPE' ? (
+              <StripePayment
+                amount={Number(amount) || 0}
+                onPaymentSuccess={handleStripePaymentSuccess}
+                onPaymentError={handleStripePaymentError}
+                disabled={!isReadyToRequest}
+              />
+            ) : chain === 'APPLE_PAY' ? (
+              <ApplePayPayment
+                amount={Number(amount) || 0}
+                onPaymentSuccess={handleApplePayPaymentSuccess}
+                onPaymentError={handleApplePayPaymentError}
+                disabled={!isReadyToRequest}
+              />
+            ) : (
+              <div className="flex gap-3">
+                <Button onClick={requestDeposit} disabled={!isReadyToRequest || isRequesting} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                  {isRequesting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ScanLine className="h-4 w-4 mr-2" />}
+                  Generate Deposit
+                </Button>
+                <Button onClick={createPurchaseAndStore} disabled={isRequesting || !amount} variant="outline" className="border-slate-600 text-slate-200 text-black">
+                  {isRequesting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Create Purchase (Store)
+                </Button>
+              </div>
+            )}
 
             {requestError && (
               <Alert className="border-red-500/40 bg-red-500/10">
                 <AlertDescription className="text-red-300">{requestError}</AlertDescription>
+              </Alert>
+            )}
+
+            {stripePaymentError && (
+              <Alert className="border-red-500/40 bg-red-500/10">
+                <AlertDescription className="text-red-300">{stripePaymentError}</AlertDescription>
+              </Alert>
+            )}
+
+            {stripePaymentSuccess && (
+              <Alert className="border-green-500/40 bg-green-500/10">
+                <AlertDescription className="text-green-300">
+                  Payment successful! Payment ID: {stripePaymentSuccess}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {applePayPaymentError && (
+              <Alert className="border-red-500/40 bg-red-500/10">
+                <AlertDescription className="text-red-300">{applePayPaymentError}</AlertDescription>
+              </Alert>
+            )}
+
+            {applePayPaymentSuccess && (
+              <Alert className="border-green-500/40 bg-green-500/10">
+                <AlertDescription className="text-green-300">
+                  Apple Pay successful! Payment ID: {applePayPaymentSuccess}
+                </AlertDescription>
               </Alert>
             )}
 

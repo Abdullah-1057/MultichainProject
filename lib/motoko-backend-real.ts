@@ -19,7 +19,7 @@ export interface Transaction {
   explorerUrl?: string;
 }
 
-export type ChainType = 'ETH' | 'BTC' | 'SOL' | 'POLYGON' | 'ARBITRUM' | 'OPTIMISM';
+export type ChainType = 'ETH' | 'BTC' | 'SOL' | 'POLYGON' | 'ARBITRUM' | 'OPTIMISM' | 'STRIPE' | 'APPLE_PAY';
 
 export type TransactionStatus = 'PENDING' | 'CONFIRMED' | 'REWARD_SENT' | 'FAILED' | 'EXPIRED' | 'PAID';
 

@@ -11,6 +11,8 @@ export const idlFactory = ({ IDL }: { IDL: any }) => {
     'POLYGON': IDL.Null,
     'ARBITRUM': IDL.Null,
     'OPTIMISM': IDL.Null,
+    'STRIPE': IDL.Null,
+    'APPLE_PAY': IDL.Null,
   });
 
   const TransactionStatus = IDL.Variant({

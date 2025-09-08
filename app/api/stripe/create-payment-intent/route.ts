@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Stripe from 'stripe';
+import { createStripeInstance, isStripeConfigured } from '@/lib/stripe-server';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-12-18.acacia',
-});
+// Initialize Stripe with proper error handling
+let stripe: any = null;
+try {
+  stripe = createStripeInstance();
+} catch (error) {
+  console.error('Stripe initialization failed:', error);
+}
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if Stripe is properly configured
+    if (!stripe || !isStripeConfigured()) {
+      return NextResponse.json(
+        { error: 'Stripe is not properly configured. Please check environment variables.' },
+        { status: 500 }
+      );
+    }
+
     const { amount, currency = 'usd', metadata = {} } = await request.json();
 
     if (!amount || amount <= 0) {
@@ -34,8 +46,9 @@ export async function POST(request: NextRequest) {
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating payment intent:', error);
+    
     return NextResponse.json(
       { error: 'Failed to create payment intent' },
       { status: 500 }

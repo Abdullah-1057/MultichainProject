@@ -123,7 +123,6 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           <PaymentElement
             options={{
               layout: 'tabs',
-              paymentMethodTypes: ['card'],
             }}
           />
         </div>

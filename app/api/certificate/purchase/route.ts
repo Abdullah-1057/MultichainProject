@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pdfCertificateGenerator } from '@/lib/pdf-certificate-generator';
+import { MotokoBackendService } from '@/lib/motoko-backend-real';
 
 interface PurchaseRequest {
   recipientName: string;
@@ -60,8 +61,27 @@ export async function POST(request: NextRequest) {
       status: 'completed'
     };
 
-    // TODO: Save to database
-    console.log('Purchase record:', purchaseRecord);
+    // Store certificate in canister (PDF base64 is derived from saved file content in this simple approach)
+    try {
+      // Read the saved PDF and convert to base64 for canister storage
+      const fs = require('fs');
+      const path = require('path');
+      const absolutePath = path.join(process.cwd(), 'public', result.pdfPath.replace(/^\/+/, ''));
+      const fileBuf = fs.readFileSync(absolutePath);
+      const pdfBase64 = fileBuf.toString('base64');
+
+      const motoko = MotokoBackendService.getInstance();
+      await motoko.createCertificate({
+        userAddress: body.email || body.recipientName,
+        recipientName: result.certificate.recipientName,
+        courseName: result.certificate.courseName,
+        verificationCode: result.certificate.verificationCode,
+        pdfBase64,
+        transactionId: undefined,
+      });
+    } catch (e) {
+      console.warn('Failed to persist certificate to canister (continuing):', e);
+    }
 
     // TODO: Send email with certificate
     // await sendCertificateEmail(body.email, result.certificate, result.pdfPath);

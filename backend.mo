@@ -843,6 +843,23 @@ actor FormManager {
     explorerUrl : ?Text;
   };
 
+  // ===============================
+  // Certificate Storage (PDF/QR)
+  // ===============================
+
+  public type CertificateId = Text;
+
+  public type Certificate = {
+    id : CertificateId;
+    userAddress : Text;
+    recipientName : Text;
+    courseName : Text;
+    issuedAt : Time.Time;
+    verificationCode : Text;
+    pdfBase64 : Text; // store PDF as base64-encoded string
+    transactionId : ?TransactionId;
+  };
+
   public type FundingRequest = {
     userAddress : Text;
     chain : ChainType;
@@ -883,12 +900,20 @@ actor FormManager {
   private stable var userTransactions_stable : [(Text, [TransactionId])] = [];
   private stable var stats_stable : (Nat, Nat, Nat, Nat, Nat, Nat, Float) = (0, 0, 0, 0, 0, 0, 0.0);
 
+  // Certificates stable storage
+  private stable var certificates_stable : [(CertificateId, Certificate)] = [];
+  private stable var userCertificates_stable : [(Text, [CertificateId])] = [];
+
   // Runtime Storage (loaded from stable memory)
   private var transactions : HashMap.HashMap<TransactionId, Transaction> = HashMap.HashMap<TransactionId, Transaction>(0, Text.equal, Text.hash);
   private var nextTransactionId : Nat = 1;
   private var userTransactions : HashMap.HashMap<Text, [TransactionId]> = HashMap.HashMap<Text, [TransactionId]>(0, Text.equal, Text.hash);
   private var stats : (Nat, Nat, Nat, Nat, Nat, Nat, Float) = (0, 0, 0, 0, 0, 0, 0.0);
   private var initialized : Bool = false;
+
+  // Certificates runtime storage
+  private var certificates : HashMap.HashMap<CertificateId, Certificate> = HashMap.HashMap<CertificateId, Certificate>(0, Text.equal, Text.hash);
+  private var userCertificates : HashMap.HashMap<Text, [CertificateId]> = HashMap.HashMap<Text, [CertificateId]>(0, Text.equal, Text.hash);
 
   //=========================================================================
 
@@ -912,6 +937,23 @@ actor FormManager {
         );
         stats := stats_stable;
       };
+      // Load certificates
+      if (certificates_stable.size() > 0) {
+        certificates := HashMap.fromIter<CertificateId, Certificate>(
+          certificates_stable.vals(),
+          certificates_stable.size(),
+          Text.equal,
+          Text.hash,
+        );
+      };
+      if (userCertificates_stable.size() > 0) {
+        userCertificates := HashMap.fromIter<Text, [CertificateId]>(
+          userCertificates_stable.vals(),
+          userCertificates_stable.size(),
+          Text.equal,
+          Text.hash,
+        );
+      };
       initialized := true;
     };
   };
@@ -922,6 +964,8 @@ actor FormManager {
     nextTransactionId_stable := nextTransactionId;
     userTransactions_stable := Iter.toArray(userTransactions.entries());
     stats_stable := stats;
+    certificates_stable := Iter.toArray(certificates.entries());
+    userCertificates_stable := Iter.toArray(userCertificates.entries());
   };
 
   // Load from stable memory (for testing and manual loading)
@@ -940,6 +984,18 @@ actor FormManager {
       Text.hash,
     );
     stats := stats_stable;
+    certificates := HashMap.fromIter<CertificateId, Certificate>(
+      certificates_stable.vals(),
+      certificates_stable.size(),
+      Text.equal,
+      Text.hash,
+    );
+    userCertificates := HashMap.fromIter<Text, [CertificateId]>(
+      userCertificates_stable.vals(),
+      userCertificates_stable.size(),
+      Text.equal,
+      Text.hash,
+    );
   };
 
   // Helper functions
@@ -1108,6 +1164,70 @@ actor FormManager {
       });
     } catch (e) {
       #Error("Failed to create deposit request: " # Error.message(e));
+    };
+  };
+
+  // ===============================
+  // Certificate APIs
+  // ===============================
+
+  private func generateCertificateId() : CertificateId {
+    Int.toText(Time.now()) # "_cert";
+  };
+
+  private func addUserCertificate(userAddress : Text, certificateId : CertificateId) {
+    switch (userCertificates.get(userAddress)) {
+      case (null) {
+        userCertificates.put(userAddress, [certificateId]);
+      };
+      case (?existing) {
+        let updated = Array.append<CertificateId>(existing, [certificateId]);
+        userCertificates.put(userAddress, updated);
+      };
+    };
+  };
+
+  public func createCertificate(
+    userAddress : Text,
+    recipientName : Text,
+    courseName : Text,
+    verificationCode : Text,
+    pdfBase64 : Text,
+    transactionId : ?TransactionId,
+  ) : async CertificateId {
+    initializeStorage();
+    let id = generateCertificateId();
+    let cert : Certificate = {
+      id = id;
+      userAddress = userAddress;
+      recipientName = recipientName;
+      courseName = courseName;
+      issuedAt = Time.now();
+      verificationCode = verificationCode;
+      pdfBase64 = pdfBase64;
+      transactionId = transactionId;
+    };
+    certificates.put(id, cert);
+    addUserCertificate(userAddress, id);
+    id;
+  };
+
+  public query func getCertificate(id : CertificateId) : async ?Certificate {
+    initializeStorage();
+    certificates.get(id);
+  };
+
+  public query func getCertificatesByUser(userAddress : Text) : async [Certificate] {
+    initializeStorage();
+    switch (userCertificates.get(userAddress)) {
+      case (null) { [] };
+      case (?ids) {
+        let list = Array.filter<Certificate>(
+          Array.map<CertificateId, ?Certificate>(ids, func(cid) = certificates.get(cid)),
+          func (oc) = Option.isSome(oc),
+        );
+        Array.map<?Certificate, Certificate>(list, func (oc) = Option.unwrap(oc));
+      };
     };
   };
 
@@ -1461,6 +1581,8 @@ actor FormManager {
     nextTransactionId_stable := nextTransactionId;
     userTransactions_stable := Iter.toArray(userTransactions.entries());
     stats_stable := stats;
+    certificates_stable := Iter.toArray(certificates.entries());
+    userCertificates_stable := Iter.toArray(userCertificates.entries());
 
   };
 
@@ -1494,8 +1616,24 @@ actor FormManager {
     );
     stats := stats_stable;
 
+    // Load certificates
+    certificates := HashMap.fromIter<CertificateId, Certificate>(
+      certificates_stable.vals(),
+      certificates_stable.size(),
+      Text.equal,
+      Text.hash,
+    );
+    userCertificates := HashMap.fromIter<Text, [CertificateId]>(
+      userCertificates_stable.vals(),
+      userCertificates_stable.size(),
+      Text.equal,
+      Text.hash,
+    );
+
     // Clear stable arrays to free memory
     transactions_stable := [];
     userTransactions_stable := [];
+    certificates_stable := [];
+    userCertificates_stable := [];
   };
 };

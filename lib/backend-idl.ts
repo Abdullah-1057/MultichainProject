@@ -78,6 +78,18 @@ export const idlFactory = ({ IDL }: { IDL: any }) => {
     'totalRewardAmount': IDL.Float64,
   });
 
+  // Certificates
+  const Certificate = IDL.Record({
+    'id': IDL.Text,
+    'userAddress': IDL.Text,
+    'recipientName': IDL.Text,
+    'courseName': IDL.Text,
+    'issuedAt': IDL.Int,
+    'verificationCode': IDL.Text,
+    'pdfBase64': IDL.Text,
+    'transactionId': IDL.Opt(IDL.Text),
+  });
+
   const StorageStatus = IDL.Record({
     'initialized': IDL.Bool,
     'transactionCount': IDL.Nat,
@@ -101,5 +113,16 @@ export const idlFactory = ({ IDL }: { IDL: any }) => {
     'resetAllTransactions': IDL.Func([], [], []),
     'saveToStableMemory': IDL.Func([], [], []),
     'loadFromStableMemory': IDL.Func([], [], []),
+    // Certificates
+    'createCertificate': IDL.Func([
+      IDL.Text, // userAddress
+      IDL.Text, // recipientName
+      IDL.Text, // courseName
+      IDL.Text, // verificationCode
+      IDL.Text, // pdfBase64
+      IDL.Opt(IDL.Text), // transactionId
+    ], [IDL.Text], []),
+    'getCertificate': IDL.Func([IDL.Text], [IDL.Opt(Certificate)], ['query']),
+    'getCertificatesByUser': IDL.Func([IDL.Text], [IDL.Vec(Certificate)], ['query']),
   });
 };

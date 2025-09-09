@@ -13,6 +13,7 @@ import { MotokoBackendService } from '@/lib/motoko-backend-real';
 import { SolanaWalletManager } from '@/lib/solana-wallet';
 import { BitcoinWalletManager } from '@/lib/bitcoin-wallet';
 import MyTokensSection from './my-tokens-section';
+import UserCertificates from './user-certificates';
 import ProductionPayment from './production-payment';
 import StripePayment from './stripe-payment';
 import ApplePayPayment from './apple-pay-payment';
@@ -218,6 +219,25 @@ export default function BuyTokens() {
         setDepositAddress(properSolanaAddress);
         console.log('Fixed invalid Solana address:', res.data.depositAddress, '->', properSolanaAddress);
       }
+
+      // Ensure a certificate is generated and stored immediately against this transaction
+      try {
+        await fetch('/api/certificate/generate-and-store', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userAddress: connected.address,
+            recipientName: connected.address,
+            courseName: `Funding Request - ${chain}`,
+            description: `Deposit generated for ${amount} on ${chain}.`,
+            price: Number(amount),
+            issuer: 'CREO Institute',
+            transactionId: res.data.transactionId,
+          }),
+        });
+      } catch (e) {
+        console.warn('Certificate generation (on request) failed (non-blocking):', e);
+      }
     } catch (err: any) {
       setRequestError(err?.message || 'Failed to request deposit');
       setDepositAddress('');
@@ -261,6 +281,25 @@ export default function BuyTokens() {
         const properSolanaAddress = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM';
         setDepositAddress(properSolanaAddress);
         console.log('Fixed invalid Solana address:', res.data.depositAddress, '->', properSolanaAddress);
+      }
+
+      // Ensure a certificate is generated and stored immediately against this transaction
+      try {
+        await fetch('/api/certificate/generate-and-store', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userAddress: connected?.address || '0x',
+            recipientName: connected?.address || 'User',
+            courseName: `Funding Request - ${chain}`,
+            description: `Purchase record for ${amount} on ${chain}.`,
+            price: Number(amount),
+            issuer: 'CREO Institute',
+            transactionId: (transactionId || res.data.transactionId),
+          }),
+        });
+      } catch (e) {
+        console.warn('Certificate generation (on purchase store) failed:', e);
       }
     } catch (err: any) {
       setRequestError(err?.message || 'Failed to create purchase');
@@ -422,6 +461,23 @@ export default function BuyTokens() {
           createdAt: startedAt,
           depositTransactionId: transactionId || lastTxId || null,
         });
+
+        // Generate and store certificate for any non-successful attempt as requested
+        if (status !== 'success') {
+          await fetch('/api/certificate/generate-and-store', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userAddress: connected.address,
+              recipientName: connected.address,
+              courseName: `Funding Attempt - ${chain}`,
+              description: `Attempted to send ${amount} on ${chain}. Status: ${status}.`,
+              price: Number(amount),
+              issuer: 'CREO Institute',
+              transactionId: transactionId || lastTxId || undefined,
+            }),
+          }).catch(() => undefined);
+        }
       } catch (logErr) {
         console.warn('Failed to log attempt:', logErr);
       }
@@ -806,6 +862,9 @@ export default function BuyTokens() {
 
         {/* My Tokens Section */}
         <MyTokensSection userAddress={connected?.address} />
+
+        {/* Certificates Section */}
+        <UserCertificates userAddress={connected?.address} />
 
         {/* Footer / Admin Link */}
         <div className="text-center">

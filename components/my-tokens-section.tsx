@@ -20,6 +20,7 @@ import {
   Hash
 } from 'lucide-react';
 import { MotokoBackendService, Transaction } from '@/lib/motoko-backend-real';
+import { Download } from 'lucide-react';
 
 interface MyTokensSectionProps {
   userAddress?: string;
@@ -63,6 +64,8 @@ type UITransaction = {
   fundingTxHash?: string;
   rewardTxHash?: string;
   explorerUrl?: string;
+  hasCertificate?: boolean;
+  certificateId?: string;
 };
 
 const STATUS_ICONS: Record<string, JSX.Element> = {
@@ -137,8 +140,12 @@ export default function MyTokensSection({ userAddress, className = '' }: MyToken
 
     try {
       const userTxs = await motoko.getTransactionsByUser(userAddress);
+      const certs = await motoko.getCertificatesByUser(userAddress);
       // Normalize and sort safely by ms number (newest first)
-      const normalized = (userTxs || []).map(normalizeTx).sort((a, b) => {
+      const normalized = (userTxs || []).map(normalizeTx).map((t) => {
+        const match = (certs || []).find((c) => c.transactionId === t.id);
+        return { ...t, hasCertificate: Boolean(match), certificateId: match?.id };
+      }).sort((a, b) => {
         const ams = a.createdAt ?? 0;
         const bms = b.createdAt ?? 0;
         return bms - ams;
@@ -302,6 +309,7 @@ export default function MyTokensSection({ userAddress, className = '' }: MyToken
                     <TableHead className="text-slate-300">Status</TableHead>
                     <TableHead className="text-slate-300">Deposit Address</TableHead>
                     <TableHead className="text-slate-300">Date</TableHead>
+                    <TableHead className="text-slate-300">Certificate</TableHead>
                     <TableHead className="text-slate-300">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -366,6 +374,32 @@ export default function MyTokensSection({ userAddress, className = '' }: MyToken
                       </TableCell>
                       <TableCell className="text-slate-300 text-sm">
                         {formatDate(tx.createdAt)}
+                      </TableCell>
+                      <TableCell>
+                        {tx.hasCertificate ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-slate-600 text-slate-200"
+                            onClick={async () => {
+                              try {
+                                const certs = await motoko.getCertificatesByUser(userAddress!);
+                                const match = certs.find((c) => c.transactionId === tx.id);
+                                if (match) {
+                                  const a = document.createElement('a');
+                                  a.href = `data:application/pdf;base64,${match.pdfBase64}`;
+                                  a.download = `certificate-${match.verificationCode}.pdf`;
+                                  a.click();
+                                }
+                              } catch {}
+                            }}
+                            title="Download PDF"
+                          >
+                            <Download className="h-3 w-3 mr-2" /> PDF
+                          </Button>
+                        ) : (
+                          <span className="text-slate-500 text-xs">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">

@@ -1,4 +1,4 @@
-import jsPDF from 'jspdf';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -143,130 +143,93 @@ class PDFCertificateGenerator {
       throw new Error(`Maximum certificate limit reached (${this.maxCertificates})`);
     }
 
-    // Create new PDF document
-    const pdf = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a4'
-    });
+    // Load template from public folder
+    const fs = require('fs');
+    const path = require('path');
+    const templatePath = path.join(process.cwd(), 'public', 'CREO_Certificate.pdf');
+    const templateExists = fs.existsSync(templatePath);
 
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
+    // Create a PDFDocument from template or blank
+    const pdfDoc = templateExists
+      ? await PDFDocument.load(fs.readFileSync(templatePath))
+      : await PDFDocument.create();
 
-    // Set up fonts and colors
-    pdf.setFont('helvetica');
-    pdf.setTextColor(0, 0, 0);
-
-    // Background gradient effect
-    pdf.setFillColor(240, 248, 255);
-    pdf.rect(0, 0, pageWidth, pageHeight, 'F');
-
-    // Border
-    pdf.setDrawColor(0, 0, 0);
-    pdf.setLineWidth(2);
-    pdf.rect(10, 10, pageWidth - 20, pageHeight - 20);
-
-    // Inner border
-    pdf.setLineWidth(1);
-    pdf.setDrawColor(100, 100, 100);
-    pdf.rect(15, 15, pageWidth - 30, pageHeight - 30);
-
-    // Header
-    pdf.setFontSize(28);
-    pdf.setFont('helvetica', 'bold');
-    pdf.setTextColor(0, 0, 139); // Dark blue
-    pdf.text('CERTIFICATE OF COMPLETION', pageWidth / 2, 40, { align: 'center' });
-
-    // Decorative line
-    pdf.setDrawColor(0, 0, 139);
-    pdf.setLineWidth(2);
-    pdf.line(50, 50, pageWidth - 50, 50);
-
-    // This is to certify that
-    pdf.setFontSize(16);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setTextColor(0, 0, 0);
-    pdf.text('This is to certify that', pageWidth / 2, 70, { align: 'center' });
-
-    // Recipient name
-    pdf.setFontSize(24);
-    pdf.setFont('helvetica', 'bold');
-    pdf.setTextColor(0, 0, 139);
-    pdf.text(certificate.recipientName, pageWidth / 2, 90, { align: 'center' });
-
-    // Has successfully completed
-    pdf.setFontSize(16);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setTextColor(0, 0, 0);
-    pdf.text('has successfully completed', pageWidth / 2, 110, { align: 'center' });
-
-    // Course name
-    pdf.setFontSize(20);
-    pdf.setFont('helvetica', 'bold');
-    pdf.setTextColor(0, 0, 139);
-    pdf.text(certificate.courseName, pageWidth / 2, 130, { align: 'center' });
-
-    // Date
-    pdf.setFontSize(14);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setTextColor(0, 0, 0);
-    pdf.text(`Issued on: ${new Date(certificate.issueDate).toLocaleDateString()}`, pageWidth / 2, 150, { align: 'center' });
-
-    // Certificate number
-    pdf.setFontSize(12);
-    pdf.text(`Certificate Number: ${certificate.certificateNumber}`, pageWidth / 2, 160, { align: 'center' });
-
-    // Referral code
-    pdf.setFontSize(12);
-    pdf.setFont('helvetica', 'bold');
-    pdf.setTextColor(0, 100, 0);
-    pdf.text(`Referral Code: ${certificate.referralCode}`, pageWidth / 2, 170, { align: 'center' });
-
-    // Generate and add QR code
-    try {
-      const qrCodeDataURL = await this.generateQRCodeImage(certificate);
-      const qrCodeImg = new Image();
-      
-      // Convert data URL to base64
-      const base64Data = qrCodeDataURL.split(',')[1];
-      
-      // Add QR code to PDF
-      pdf.addImage(base64Data, 'PNG', pageWidth - 60, pageHeight - 60, 40, 40);
-      
-      // QR code label
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(0, 0, 0);
-      pdf.text('Scan to verify', pageWidth - 40, pageHeight - 20, { align: 'center' });
-    } catch (error) {
-      console.error('Error adding QR code to PDF:', error);
+    if (!templateExists) {
+      // fallback: blank landscape A4 page
+      const page = pdfDoc.addPage([842, 595]);
+      page.drawRectangle({ x: 0, y: 0, width: 842, height: 595, color: rgb(0.94, 0.97, 1) });
     }
 
-    // Signature line
-    pdf.setFontSize(12);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setTextColor(0, 0, 0);
-    pdf.text('Authorized Signature', pageWidth - 100, pageHeight - 40);
-    pdf.line(pageWidth - 100, pageHeight - 35, pageWidth - 50, pageHeight - 35);
+    const pages = pdfDoc.getPages();
+    const page = pages[0];
+    const { width, height } = page.getSize();
 
-    // Issuer
-    pdf.setFontSize(14);
-    pdf.setFont('helvetica', 'bold');
-    pdf.setTextColor(0, 0, 139);
-    pdf.text(certificate.issuer, pageWidth - 75, pageHeight - 25, { align: 'center' });
+    // Fonts
+    const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    // Footer
-    pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setTextColor(100, 100, 100);
-    pdf.text(`Verification Code: ${certificate.verificationCode}`, 20, pageHeight - 10);
-    pdf.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - 80, pageHeight - 10);
+    // QR code image
+    const qrDataUrl = await this.generateQRCodeImage(certificate);
+    const qrBase64 = qrDataUrl.split(',')[1];
+    const qrBytes = Buffer.from(qrBase64, 'base64');
+    const qrImage = await pdfDoc.embedPng(qrBytes);
+    const qrSize = 80; // px
 
-    // Increment certificate count
+    // Positions tuned to overlay on template (adjust if needed)
+    const centerX = width / 2;
+    const textColor = rgb(0.0, 0.0, 0.2);
+
+    // Recipient name
+    page.drawText(certificate.recipientName, {
+      x: centerX - fontBold.widthOfTextAtSize(certificate.recipientName, 28) / 2,
+      y: height - 290,
+      size: 28,
+      font: fontBold,
+      color: textColor,
+    });
+
+    // Course line
+    const course = certificate.courseName;
+    page.drawText(course, {
+      x: centerX - fontBold.widthOfTextAtSize(course, 20) / 2,
+      y: height - 330,
+      size: 20,
+      font: fontBold,
+      color: textColor,
+    });
+
+    // Issued date
+    const dateStr = `Issued on: ${new Date(certificate.issueDate).toLocaleDateString()}`;
+    page.drawText(dateStr, {
+      x: centerX - fontRegular.widthOfTextAtSize(dateStr, 12) / 2,
+      y: height - 360,
+      size: 12,
+      font: fontRegular,
+      color: rgb(0, 0, 0),
+    });
+
+    // Certificate number and referral code at bottom
+    const certNum = `Certificate #: ${certificate.certificateNumber}`;
+    const ref = `Referral: ${certificate.referralCode}`;
+    page.drawText(certNum, { x: 40, y: 40, size: 10, font: fontRegular, color: rgb(0.3, 0.3, 0.3) });
+    page.drawText(ref, { x: 40, y: 28, size: 10, font: fontRegular, color: rgb(0.3, 0.3, 0.3) });
+
+    // Verification code right side
+    const ver = `Verification: ${certificate.verificationCode}`;
+    const verWidth = fontRegular.widthOfTextAtSize(ver, 10);
+    page.drawText(ver, { x: width - verWidth - 40, y: 28, size: 10, font: fontRegular, color: rgb(0.3, 0.3, 0.3) });
+
+    // Draw QR bottom-right
+    page.drawImage(qrImage, { x: width - qrSize - 40, y: 40, width: qrSize, height: qrSize });
+    const qrLabel = 'Scan to verify';
+    const qrLabelWidth = fontRegular.widthOfTextAtSize(qrLabel, 10);
+    page.drawText(qrLabel, { x: width - 40 - (qrLabelWidth / 2) - (qrSize / 2) + qrSize / 2, y: 30, size: 10, font: fontRegular, color: rgb(0, 0, 0) });
+
+    // Increment counter
     this.certificateCount++;
 
-    // Return PDF as buffer
-    return Buffer.from(pdf.output('arraybuffer'));
+    const pdfBytes = await pdfDoc.save();
+    return Buffer.from(pdfBytes);
   }
 
   /**

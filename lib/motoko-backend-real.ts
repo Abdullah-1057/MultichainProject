@@ -64,6 +64,17 @@ export interface TransactionStats {
   totalRewardAmount: number;
 }
 
+export interface CertificateRecord {
+  id: string;
+  userAddress: string;
+  recipientName: string;
+  courseName: string;
+  issuedAt: number;
+  verificationCode: string;
+  pdfBase64: string;
+  transactionId?: string;
+}
+
 // Real Motoko Backend Service
 export class MotokoBackendService {
   private static instance: MotokoBackendService;
@@ -395,6 +406,75 @@ export class MotokoBackendService {
     } catch (error) {
       console.error('Error getting reward amount:', error);
       return 2.0;
+    }
+  }
+
+  // ===== Certificates =====
+  async createCertificate(params: {
+    userAddress: string;
+    recipientName: string;
+    courseName: string;
+    verificationCode: string;
+    pdfBase64: string;
+    transactionId?: string;
+  }): Promise<string | null> {
+    try {
+      if (!this.actor) throw new Error('Canister not initialized');
+      const cid = await this.actor.createCertificate(
+        params.userAddress,
+        params.recipientName,
+        params.courseName,
+        params.verificationCode,
+        params.pdfBase64,
+        params.transactionId ? [params.transactionId] : [],
+      );
+      return String(cid);
+    } catch (e) {
+      console.error('createCertificate failed:', e);
+      return null;
+    }
+  }
+
+  async getCertificate(id: string): Promise<CertificateRecord | null> {
+    try {
+      if (!this.actor) throw new Error('Canister not initialized');
+      const res = await this.actor.getCertificate(id);
+      if (!res || !res[0]) return null;
+      const c = res[0];
+      return {
+        id: String(c.id),
+        userAddress: String(c.userAddress),
+        recipientName: String(c.recipientName),
+        courseName: String(c.courseName),
+        issuedAt: Number(c.issuedAt) / 1_000_000,
+        verificationCode: String(c.verificationCode),
+        pdfBase64: String(c.pdfBase64),
+        transactionId: c.transactionId && c.transactionId[0] ? String(c.transactionId[0]) : undefined,
+      };
+    } catch (e) {
+      console.error('getCertificate failed:', e);
+      return null;
+    }
+  }
+
+  async getCertificatesByUser(userAddress: string): Promise<CertificateRecord[]> {
+    try {
+      if (!this.actor) throw new Error('Canister not initialized');
+      const res = await this.actor.getCertificatesByUser(userAddress);
+      if (!res || !Array.isArray(res)) return [];
+      return res.map((c: any) => ({
+        id: String(c.id),
+        userAddress: String(c.userAddress),
+        recipientName: String(c.recipientName),
+        courseName: String(c.courseName),
+        issuedAt: Number(c.issuedAt) / 1_000_000,
+        verificationCode: String(c.verificationCode),
+        pdfBase64: String(c.pdfBase64),
+        transactionId: c.transactionId && c.transactionId[0] ? String(c.transactionId[0]) : undefined,
+      }));
+    } catch (e) {
+      console.error('getCertificatesByUser failed:', e);
+      return [];
     }
   }
 
